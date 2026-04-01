@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AdminSidebar } from './AdminSidebar';
 import { AdminTopBar } from './AdminTopBar';
+import { AdminRealtimeMap } from './AdminRealtimeMap';
 import { Users, Car, Navigation, Package, TrendingUp, TrendingDown, MapPin, User, Phone, X, CheckCircle, AlertTriangle, DollarSign, MessageSquare, Plus, Bell, Ban, Crosshair, ZoomIn, Clock, Wifi, CreditCard, Truck, Server, Activity, Globe, Zap, FileText, Moon, ChevronDown } from 'lucide-react';
 import { listenForAllDrivers, listenForAllOrders, listenForAllUsers } from '../../../services/firebaseService';
 
@@ -191,6 +192,14 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     { month: 'Jun', value: 65 },
     { month: 'Jul', value: 70 },
   ];
+  const monthlyMaxValue = Math.max(...monthlyData.map((d) => d.value));
+  const monthlyLinePoints = monthlyData
+    .map((d, idx) => {
+      const x = monthlyData.length <= 1 ? 0 : (idx * 100) / (monthlyData.length - 1);
+      const y = 100 - (d.value / monthlyMaxValue) * 100;
+      return `${x},${y}`;
+    })
+    .join(' ');
 
   const complaintsData = [
     { status: 'Resolved', count: 45, total: 60, color: 'text-green-600', bg: 'bg-green-500' },
@@ -279,6 +288,8 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               </div>
             ))}
           </div>
+
+          <AdminRealtimeMap />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
             {/* Enhanced Map Section */}
@@ -540,47 +551,44 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               
               {/* Mini Line Chart */}
               <div className="relative h-48 flex items-end justify-between gap-2">
-                {monthlyData.map((data, idx) => (
-                  <div key={idx} className="flex-1 flex flex-col items-center gap-2 group cursor-pointer">
-                    {/* Line connection */}
-                    {idx < monthlyData.length - 1 && (
-                      <svg className="absolute" style={{ 
-                        left: `${(idx / (monthlyData.length - 1)) * 100}%`, 
-                        top: `${100 - data.value}%`,
-                        width: `${100 / (monthlyData.length - 1)}%`,
-                        height: '100%',
-                      }}>
-                        <line 
-                          x1="50%" 
-                          y1="0" 
-                          x2={`${100 * (idx + 1) / idx}%`} 
-                          y2={`${(monthlyData[idx + 1].value - data.value) / data.value * 100}%`}
-                          stroke="url(#lineGradient)" 
-                          strokeWidth="3"
-                          className="transition-all"
-                        />
-                        <defs>
-                          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="#5B4FE5" />
-                            <stop offset="100%" stopColor="#7C6FFF" />
-                          </linearGradient>
-                        </defs>
-                      </svg>
-                    )}
-                    
-                    {/* Bar */}
-                    <div 
-                      className="w-full bg-gradient-to-t from-[#5B4FE5] to-[#7C6FFF] rounded-t-lg transition-all duration-300 group-hover:opacity-100 opacity-80 relative"
-                      style={{ height: `${data.value}%` }}
-                    >
-                      {/* Tooltip */}
-                      <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold">
-                        {data.value}%
+                {/* Single SVG line (no per-segment math, avoids NaN/slashes) */}
+                <svg
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                >
+                  <defs>
+                    <linearGradient id="monthlyLineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#5B4FE5" />
+                      <stop offset="100%" stopColor="#7C6FFF" />
+                    </linearGradient>
+                  </defs>
+                  <polyline
+                    points={monthlyLinePoints}
+                    fill="none"
+                    stroke="url(#monthlyLineGradient)"
+                    strokeWidth="3"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                </svg>
+
+                {monthlyData.map((data, idx) => {
+                  const heightPercent = (data.value / monthlyMaxValue) * 100;
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center gap-2 group cursor-pointer">
+                      <div
+                        className="w-full bg-gradient-to-t from-[#5B4FE5] to-[#7C6FFF] rounded-t-lg transition-all duration-300 group-hover:opacity-100 opacity-80 relative"
+                        style={{ height: `${heightPercent}%` }}
+                      >
+                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap font-semibold">
+                          {data.value}%
+                        </div>
                       </div>
+                      <span className="text-xs font-semibold text-gray-500">{data.month}</span>
                     </div>
-                    <span className="text-xs font-semibold text-gray-500">{data.month}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 

@@ -32,15 +32,32 @@ export default function App() {
   const [userEmail, setUserEmail] = useState<string>('');
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [driverMatchMode, setDriverMatchMode] = useState<'ai' | 'manual'>('ai');
   const [selectedServiceType, setSelectedServiceType] = useState<string>('');
   const [selectedService, setSelectedService] = useState<string>('');
-  const [bookingDetails, setBookingDetails] = useState({ pickup: '', dropoff: '' });
+  const [bookingDetails, setBookingDetails] = useState({
+    pickup: '',
+    dropoff: '',
+    pickupLocation: { lat: 26.0667, lng: 50.5577 },
+    dropoffLocation: { lat: 26.0667, lng: 50.5577 },
+  });
   const [selectedDestination, setSelectedDestination] = useState<{ location: string; area?: string } | null>(null);
   
   // Driver-specific state
   const [isDriver, setIsDriver] = useState<boolean>(false);
   const [vehicleType, setVehicleType] = useState<string>('');
   const [vehiclePlate, setVehiclePlate] = useState<string>('');
+
+  // AI chatbot widget (public/golocal-ai-chatbot.js) reads this for login / booking hints
+  useEffect(() => {
+    const hasActiveBooking =
+      !!activeOrderId || ['driver-matching', 'live-tracking', 'payment'].includes(currentScreen);
+    (window as Window & { GoLocalChatContext?: Record<string, unknown> }).GoLocalChatContext = {
+      isLoggedIn: Boolean(currentUserId),
+      hasActiveBooking,
+      userName: userName || '',
+    };
+  }, [currentUserId, userName, activeOrderId, currentScreen]);
 
   // Check if user is already logged in
   useEffect(() => {
@@ -55,15 +72,16 @@ export default function App() {
             if (!userData) {
               return;
             }
+            const normalizedRole = String(userData.role ?? 'user').toLowerCase();
             setUserName(userData.name || '');
             setUserEmail(userData.email || '');
             setUserPhone(userData.phone || '');
             setUserCity(userData.city || '');
 
-            if (userData.role === 'driver') {
+            if (normalizedRole === 'driver') {
               setIsDriver(true);
               setCurrentScreen('driver-system');
-            } else if (userData.role === 'admin') {
+            } else if (normalizedRole === 'admin') {
               setCurrentScreen('admin-system');
             } else {
               setCurrentScreen('home');
@@ -103,7 +121,12 @@ export default function App() {
     setActiveOrderId(null);
     setSelectedServiceType('');
     setSelectedService('');
-    setBookingDetails({ pickup: '', dropoff: '' });
+    setBookingDetails({
+      pickup: '',
+      dropoff: '',
+      pickupLocation: { lat: 26.0667, lng: 50.5577 },
+      dropoffLocation: { lat: 26.0667, lng: 50.5577 },
+    });
     setSelectedDestination(null);
     setIsDriver(false);
     setVehicleType('');
@@ -232,7 +255,7 @@ export default function App() {
         onNavigateLogin={() => setCurrentScreen('login')}
         onNavigateRegister={() => setCurrentScreen('register')}
         onRebook={(pickup: string, dropoff: string, serviceType: string) => {
-          setBookingDetails({ pickup, dropoff });
+          setBookingDetails((prev) => ({ ...prev, pickup, dropoff }));
           setSelectedServiceType(serviceType);
           setCurrentScreen('booking-details');
         }}
@@ -276,6 +299,7 @@ export default function App() {
         driverName="Ahmed Al-Khalifa"
         pickupLocation={bookingDetails.pickup}
         dropoffLocation={bookingDetails.dropoff}
+        orderId={activeOrderId}
         onTripComplete={() => setCurrentScreen('payment')}
       />
     );
@@ -290,6 +314,7 @@ export default function App() {
         onDriverMatched={() => setCurrentScreen('live-tracking')}
         userCity={userCity}
         orderId={activeOrderId}
+        matchingMode={driverMatchMode}
       />
     );
   }
@@ -305,8 +330,14 @@ export default function App() {
         onNavigateRegister={() => setCurrentScreen('register')}
         initialPickup={bookingDetails.pickup}
         initialDropoff={bookingDetails.dropoff}
-        onConfirm={(pickup, dropoff) => {
-          setBookingDetails({ pickup, dropoff });
+        onConfirm={(payload) => {
+          setDriverMatchMode(payload.matchingMode);
+          setBookingDetails({
+            pickup: payload.pickupAddress,
+            dropoff: payload.dropoffAddress,
+            pickupLocation: payload.pickupLocation,
+            dropoffLocation: payload.dropoffLocation,
+          });
           const submitOrder = async () => {
             if (!currentUserId) {
               setCurrentScreen('driver-matching');
@@ -314,10 +345,10 @@ export default function App() {
             }
             try {
               const newOrderId = await createOrder({
-                pickupAddress: pickup,
-                dropoffAddress: dropoff,
-                pickupLocation: { lat: 26.2235, lng: 50.5876 },
-                dropoffLocation: { lat: 26.2100, lng: 50.5750 },
+                pickupAddress: payload.pickupAddress,
+                dropoffAddress: payload.dropoffAddress,
+                pickupLocation: payload.pickupLocation,
+                dropoffLocation: payload.dropoffLocation,
               });
               setActiveOrderId(newOrderId);
             } catch (error) {
@@ -400,7 +431,7 @@ export default function App() {
         onNavigateRegister={() => setCurrentScreen('register')}
         onRebook={(pickup, dropoff, serviceType) => {
           setSelectedServiceType(serviceType);
-          setBookingDetails({ pickup, dropoff });
+          setBookingDetails((prev) => ({ ...prev, pickup, dropoff }));
           setCurrentScreen('booking-details');
         }}
       />
@@ -449,15 +480,8 @@ export default function App() {
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="mb-8">
             {/* Logo Circle */}
-            <div className="w-32 h-32 rounded-full bg-white flex items-center justify-center shadow-2xl">
-              <div className="text-center">
-                <div className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
-                  Go
-                </div>
-                <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent -mt-2">
-                  Local
-                </div>
-              </div>
+            <div className="w-32 h-32 rounded-full bg-white flex items-center justify-center shadow-2xl overflow-hidden">
+              <img src="/logo.png" alt="GoLocal Logo" className="w-full h-full object-cover" />
             </div>
           </div>
           

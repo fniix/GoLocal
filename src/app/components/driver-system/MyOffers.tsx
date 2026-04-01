@@ -51,21 +51,14 @@ export function MyOffers({
   }, []);
 
   return (
-    <div className="size-full flex bg-gray-50">
+    <div className="size-full flex bg-slate-50 text-slate-900 transition-colors duration-300">
       {/* Fixed Left Sidebar */}
       <aside className="w-64 bg-gradient-to-b from-purple-600 to-blue-600 text-white flex-shrink-0 flex flex-col">
         {/* Logo */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg">
-              <div className="text-center">
-                <div className="text-sm font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
-                  Go
-                </div>
-                <div className="text-xs font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent -mt-0.5">
-                  Local
-                </div>
-              </div>
+            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg overflow-hidden">
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
             </div>
             <div>
               <h2 className="font-bold text-lg">Driver System</h2>
@@ -143,14 +136,13 @@ export function MyOffers({
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-8 py-6">
+        <header className="bg-white border-b border-slate-200 px-8 py-6 sticky top-0 z-10 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">My Assigned Orders</h1>
-              <p className="text-gray-500 mt-1">Live orders assigned to you</p>
+              <h1 className="text-3xl font-bold text-slate-900">My Assigned Orders</h1>
+              <p className="text-slate-500 mt-1">Live orders assigned to you</p>
             </div>
           </div>
         </header>
@@ -159,18 +151,18 @@ export function MyOffers({
         <div className="p-8">
           {/* Stats Summary */}
           <div className="grid grid-cols-3 gap-6 mb-8">
-            <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
-              <p className="text-gray-500 text-sm mb-1">Total Assigned</p>
-              <p className="text-3xl font-bold text-gray-800">{assignedOrders.length}</p>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <p className="text-slate-500 text-sm mb-1 font-medium">Total Assigned</p>
+              <p className="text-3xl font-bold text-slate-900">{assignedOrders.length}</p>
             </div>
-            <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
-              <p className="text-gray-500 text-sm mb-1">Accepted</p>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <p className="text-slate-500 text-sm mb-1 font-medium">Accepted</p>
               <p className="text-3xl font-bold text-green-600">
                 {assignedOrders.filter((order) => order.status === 'accepted').length}
               </p>
             </div>
-            <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
-              <p className="text-gray-500 text-sm mb-1">Completed</p>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <p className="text-slate-500 text-sm mb-1 font-medium">Completed</p>
               <p className="text-3xl font-bold text-blue-600">
                 {assignedOrders.filter((order) => order.status === 'completed').length}
               </p>
@@ -184,9 +176,9 @@ export function MyOffers({
               <p className="text-gray-500">Listening for your orders in real-time.</p>
             </div>
           ) : error ? (
-            <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-6">
-              <h3 className="text-lg font-bold text-red-800 mb-2">Failed to load orders</h3>
-              <p className="text-red-700">{error}</p>
+            <div className="bg-red-500/10 border-2 border-red-500/20 rounded-2xl p-6 backdrop-blur-md shadow-2xl shadow-red-500/5">
+              <h3 className="text-lg font-bold text-red-400 mb-2">Failed to load orders</h3>
+              <p className="text-red-300/80">{error}</p>
             </div>
           ) : (
             <div className="space-y-4">

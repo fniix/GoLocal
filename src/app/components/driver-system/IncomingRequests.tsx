@@ -113,21 +113,14 @@ export function IncomingRequests({
   };
 
   return (
-    <div className="size-full flex bg-gray-50">
+    <div className="size-full flex bg-slate-50 text-slate-900 transition-colors duration-300">
       {/* Fixed Left Sidebar */}
       <aside className="w-64 bg-gradient-to-b from-purple-600 to-blue-600 text-white flex-shrink-0 flex flex-col">
         {/* Logo */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg">
-              <div className="text-center">
-                <div className="text-sm font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
-                  Go
-                </div>
-                <div className="text-xs font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent -mt-0.5">
-                  Local
-                </div>
-              </div>
+            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg overflow-hidden">
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
             </div>
             <div>
               <h2 className="font-bold text-lg">Driver System</h2>
@@ -211,14 +204,13 @@ export function IncomingRequests({
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-8 py-6">
+        <header className="bg-white border-b border-slate-200 px-8 py-6 sticky top-0 z-10 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Incoming Requests</h1>
-              <p className="text-gray-500 mt-1">
+              <h1 className="text-3xl font-bold text-slate-900">Incoming Requests</h1>
+              <p className="text-slate-500 mt-1">
                 {driverStatus === 'available' 
                   ? `${requests.length} pending requests`
                   : 'Set status to Available to receive requests'}
@@ -273,7 +265,7 @@ export function IncomingRequests({
               {requests.map((request) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-2xl shadow-lg border-2 border-blue-200 overflow-hidden"
+                  className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:border-purple-400/50 transition-all"
                 >
                   {/* Timer Bar */}
                   <div className="bg-gradient-to-r from-red-500 to-orange-500 px-6 py-3 flex items-center justify-between">
@@ -290,29 +282,29 @@ export function IncomingRequests({
                     {/* Customer Info */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-start gap-4">
-                        <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <div className="w-14 h-14 bg-purple-50 rounded-full flex items-center justify-center flex-shrink-0 border border-purple-100">
                           <User className="w-7 h-7 text-purple-600" />
                         </div>
                         <div>
-                          <h3 className="text-xl font-bold text-gray-800 mb-1">
+                          <h3 className="text-xl font-bold text-slate-900 mb-1">
                             {request.customerName}
                           </h3>
                           <div className="flex items-center gap-2">
                             <div className="flex items-center gap-1">
                               <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                              <span className="text-sm font-semibold text-gray-700">
+                              <span className="text-sm font-semibold text-slate-600">
                                 {request.customerRating.toFixed(1)}
                               </span>
                             </div>
-                            <span className="text-gray-400">•</span>
-                            <span className="text-sm text-gray-600">{request.serviceType}</span>
+                            <span className="text-slate-200">•</span>
+                            <span className="text-sm text-slate-500">{request.serviceType}</span>
                           </div>
                         </div>
                       </div>
 
                       {/* Suggested Price */}
                       <div className="text-right">
-                        <p className="text-xs text-gray-500 mb-1">Suggested Price</p>
+                        <p className="text-xs text-slate-500 mb-1">Suggested Price</p>
                         <p className="text-3xl font-bold text-green-600">
                           BD {request.suggestedPrice.toFixed(2)}
                         </p>
@@ -320,20 +312,20 @@ export function IncomingRequests({
                     </div>
 
                     {/* Route Information */}
-                    <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                    <div className="bg-slate-50 rounded-xl p-4 mb-4 border border-slate-100">
                       <div className="flex items-start gap-3">
                         <MapPin className="w-5 h-5 text-purple-600 flex-shrink-0 mt-1" />
                         <div className="flex-1">
                           <div className="mb-3">
-                            <p className="text-xs text-gray-500 mb-1">Pickup Location</p>
-                            <p className="font-semibold text-gray-800">
+                            <p className="text-xs text-slate-400 mb-1">Pickup Location</p>
+                            <p className="font-semibold text-slate-800">
                               {request.fromCity} - {request.fromArea}
                             </p>
                           </div>
-                          <div className="w-full h-px bg-gray-300 my-2"></div>
+                          <div className="w-full h-px bg-slate-200 my-2"></div>
                           <div>
-                            <p className="text-xs text-gray-500 mb-1">Dropoff Location</p>
-                            <p className="font-semibold text-gray-800">
+                            <p className="text-xs text-slate-400 mb-1">Dropoff Location</p>
+                            <p className="font-semibold text-slate-800">
                               {request.toCity} - {request.toArea}
                             </p>
                           </div>
@@ -343,8 +335,8 @@ export function IncomingRequests({
 
                     {/* Description */}
                     <div className="mb-6">
-                      <p className="text-sm text-gray-500 mb-1">Description</p>
-                      <p className="text-gray-700">{request.description}</p>
+                      <p className="text-sm text-slate-400 mb-1">Description</p>
+                      <p className="text-slate-600">{request.description}</p>
                     </div>
 
                     {/* Actions */}

@@ -8,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  limit,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -41,6 +42,7 @@ export interface DriverData {
   rating?: number;
   totalTrips?: number;
   createdAt?: unknown;
+  lastUpdatedAt?: unknown;
 }
 
 export interface OrderData {
@@ -67,7 +69,7 @@ const mapUser = (id: string, data: any): UserData => ({
   email: data?.email ?? "",
   phone: data?.phone ?? "",
   city: data?.city ?? "",
-  role: (data?.role ?? "user") as UserRole,
+  role: String(data?.role ?? "user").toLowerCase() as UserRole,
   status: data?.status ?? "active",
   createdAt: data?.createdAt,
 });
@@ -85,6 +87,7 @@ const mapDriver = (id: string, data: any): DriverData => ({
   rating: data?.rating ?? 0,
   totalTrips: data?.totalTrips ?? 0,
   createdAt: data?.createdAt,
+  lastUpdatedAt: data?.lastUpdatedAt,
 });
 
 const mapOrder = (id: string, data: any): OrderData => ({
@@ -284,6 +287,15 @@ export async function acceptOrder(orderId: string) {
     throw new Error("Driver is not authenticated");
   }
 
+  const orderSnap = await getDoc(doc(db, "orders", orderId));
+  if (!orderSnap.exists()) {
+    throw new Error("Order not found");
+  }
+  const orderData = orderSnap.data();
+  if (orderData?.assignedDriverId && orderData.assignedDriverId !== driverUid) {
+    throw new Error("This order is assigned to another driver");
+  }
+
   const driverDoc = await getDoc(doc(db, "drivers", driverUid));
   const driverData = driverDoc.exists() ? driverDoc.data() : null;
 
@@ -292,6 +304,22 @@ export async function acceptOrder(orderId: string) {
     assignedDriverId: driverUid,
     assignedDriverName: driverData?.name ?? null,
     assignedDriverPhone: driverData?.phone ?? null,
+  });
+  await updateDoc(doc(db, "drivers", driverUid), {
+    status: "busy",
+    lastUpdatedAt: serverTimestamp(),
+  });
+}
+
+export async function setPreferredDriverForOrder(
+  orderId: string,
+  driver: Pick<DriverData, "driverId" | "name" | "phone">,
+) {
+  await updateDoc(doc(db, "orders", orderId), {
+    assignedDriverId: driver.driverId,
+    assignedDriverName: driver.name,
+    assignedDriverPhone: driver.phone,
+    updatedAt: serverTimestamp(),
   });
 }
 
@@ -320,6 +348,7 @@ export function listenForUserOrders(
     collection(db, "orders"),
     where("userId", "==", userId),
     orderBy("createdAt", "desc"),
+    limit(20),
   );
   return onSnapshot(
     ordersQuery,
@@ -346,6 +375,7 @@ export function listenForPendingOrders(
     collection(db, "orders"),
     where("status", "==", "pending"),
     orderBy("createdAt", "desc"),
+    limit(50),
   );
   return onSnapshot(
     ordersQuery,
@@ -372,6 +402,7 @@ export function listenForDriverOrders(
     collection(db, "orders"),
     where("assignedDriverId", "==", driverId),
     orderBy("createdAt", "desc"),
+    limit(20),
   );
   return onSnapshot(
     ordersQuery,

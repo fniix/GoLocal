@@ -73,21 +73,14 @@ export function Earnings({
   };
 
   return (
-    <div className="size-full flex bg-gray-50">
+    <div className="size-full flex bg-slate-50 text-slate-900 transition-colors duration-300">
       {/* Fixed Left Sidebar */}
       <aside className="w-64 bg-gradient-to-b from-purple-600 to-blue-600 text-white flex-shrink-0 flex flex-col">
         {/* Logo */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg">
-              <div className="text-center">
-                <div className="text-sm font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
-                  Go
-                </div>
-                <div className="text-xs font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent -mt-0.5">
-                  Local
-                </div>
-              </div>
+            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg overflow-hidden">
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
             </div>
             <div>
               <h2 className="font-bold text-lg">Driver System</h2>
@@ -167,13 +160,12 @@ export function Earnings({
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-8 py-6">
+        <header className="bg-white border-b border-slate-200 px-8 py-6 sticky top-0 z-10 shadow-sm">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Earnings</h1>
-            <p className="text-gray-500 mt-1">Track your earnings and delivery history</p>
+            <h1 className="text-3xl font-bold text-slate-900">Earnings</h1>
+            <p className="text-slate-500 mt-1">Track your earnings and delivery history</p>
           </div>
         </header>
 

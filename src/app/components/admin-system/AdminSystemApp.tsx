@@ -53,6 +53,35 @@ export function AdminSystemApp() {
     };
   }, []);
 
+  useEffect(() => {
+    const allowedPages = new Set([
+      'dashboard',
+      'users',
+      'drivers',
+      'trips',
+      'delivery',
+      'payments',
+      'complaints',
+      'violations',
+      'reports',
+      'notifications',
+      'settings',
+    ]);
+
+    const handleTopBarNavigation = (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      const nextPage = customEvent.detail;
+      if (typeof nextPage === 'string' && allowedPages.has(nextPage)) {
+        setCurrentPage(nextPage as typeof currentPage);
+      }
+    };
+
+    window.addEventListener('admin:navigate', handleTopBarNavigation as EventListener);
+    return () => {
+      window.removeEventListener('admin:navigate', handleTopBarNavigation as EventListener);
+    };
+  }, []);
+
   if (checkingAccess) {
     return <div className="size-full flex items-center justify-center text-gray-500">Checking admin access...</div>;
   }

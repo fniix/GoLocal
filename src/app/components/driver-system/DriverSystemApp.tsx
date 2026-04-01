@@ -29,7 +29,7 @@ export function DriverSystemApp() {
   // Landing Page
   if (currentPage === 'landing') {
     return (
-      <DriverLandingPage 
+      <DriverLandingPage
         onEnterSystem={() => setCurrentPage('dashboard')}
       />
     );
@@ -40,7 +40,7 @@ export function DriverSystemApp() {
   // Dashboard
   if (currentPage === 'dashboard') {
     currentView = (
-      <DriverSystemDashboard 
+      <DriverSystemDashboard
         onNavigateToCreateOffer={() => setCurrentPage('create-offer')}
         onNavigateToMyOffers={() => setCurrentPage('my-offers')}
         onNavigateToIncomingRequests={() => setCurrentPage('incoming-requests')}
@@ -55,7 +55,7 @@ export function DriverSystemApp() {
   // Create Delivery Offer
   if (currentPage === 'create-offer') {
     currentView = (
-      <CreateDeliveryOffer 
+      <CreateDeliveryOffer
         onBack={() => setCurrentPage('dashboard')}
         onNavigateToDashboard={() => setCurrentPage('dashboard')}
         onNavigateToMyOffers={() => setCurrentPage('my-offers')}
@@ -71,7 +71,7 @@ export function DriverSystemApp() {
   // My Offers
   if (currentPage === 'my-offers') {
     currentView = (
-      <MyOffers 
+      <MyOffers
         onNavigateToDashboard={() => setCurrentPage('dashboard')}
         onNavigateToCreateOffer={() => setCurrentPage('create-offer')}
         onNavigateToIncomingRequests={() => setCurrentPage('incoming-requests')}
@@ -86,7 +86,7 @@ export function DriverSystemApp() {
   // Incoming Requests
   if (currentPage === 'incoming-requests') {
     currentView = (
-      <IncomingRequests 
+      <IncomingRequests
         onNavigateToDashboard={() => setCurrentPage('dashboard')}
         onNavigateToMyOffers={() => setCurrentPage('my-offers')}
         onNavigateToCreateOffer={() => setCurrentPage('create-offer')}
@@ -102,7 +102,7 @@ export function DriverSystemApp() {
   // Delivery Completed
   if (currentPage === 'delivery-completed') {
     currentView = (
-      <DeliveryCompleted 
+      <DeliveryCompleted
         onNavigateToDashboard={() => setCurrentPage('dashboard')}
         onNavigateToMyOffers={() => setCurrentPage('my-offers')}
         onNavigateToIncomingRequests={() => setCurrentPage('incoming-requests')}
@@ -117,7 +117,7 @@ export function DriverSystemApp() {
   // Earnings
   if (currentPage === 'earnings') {
     currentView = (
-      <Earnings 
+      <Earnings
         onNavigateToDashboard={() => setCurrentPage('dashboard')}
         onNavigateToMyOffers={() => setCurrentPage('my-offers')}
         onNavigateToIncomingRequests={() => setCurrentPage('incoming-requests')}
@@ -131,7 +131,7 @@ export function DriverSystemApp() {
   // Reviews
   if (currentPage === 'reviews') {
     currentView = (
-      <Reviews 
+      <Reviews
         onNavigateToDashboard={() => setCurrentPage('dashboard')}
         onNavigateToMyOffers={() => setCurrentPage('my-offers')}
         onNavigateToIncomingRequests={() => setCurrentPage('incoming-requests')}
@@ -145,7 +145,7 @@ export function DriverSystemApp() {
   // Profile
   if (currentPage === 'profile') {
     currentView = (
-      <DriverSystemProfile 
+      <DriverSystemProfile
         onNavigateToDashboard={() => setCurrentPage('dashboard')}
         onNavigateToMyOffers={() => setCurrentPage('my-offers')}
         onNavigateToIncomingRequests={() => setCurrentPage('incoming-requests')}
@@ -156,11 +156,10 @@ export function DriverSystemApp() {
     );
   }
 
-  // Active Deliveries - placeholder for now  
+  // Active Deliveries - placeholder for now
   if (currentPage === 'active-deliveries') {
-    // Simulate a completed delivery scenario
     currentView = (
-      <DeliveryCompleted 
+      <DeliveryCompleted
         onNavigateToDashboard={() => setCurrentPage('dashboard')}
         onNavigateToMyOffers={() => setCurrentPage('my-offers')}
         onNavigateToIncomingRequests={() => setCurrentPage('incoming-requests')}
@@ -175,39 +174,35 @@ export function DriverSystemApp() {
   if (!currentView) return null;
 
   return (
-    <div className="relative size-full">
+    <div className="relative h-screen w-full overflow-hidden bg-white text-slate-900">
       {currentView}
-      {currentPage !== 'landing' && (
-        <>
-          <div className="fixed bottom-0 left-0 z-50 w-64 bg-gradient-to-b from-purple-600 to-blue-600 border-t border-white/10 px-6 py-4">
+        <div className="fixed bottom-0 left-0 z-50 w-64 border-t border-white/10 px-6 py-4 bg-white/5 backdrop-blur-xl">
+          <button
+            onClick={() => setShowAccountMenu((prev) => !prev)}
+            className="flex w-full items-center gap-3 rounded-xl bg-white/10 px-3 py-2 text-white hover:bg-white/20 transition-all border border-white/10 shadow-lg shadow-black/20"
+          >
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center border border-white/20">
+              <User className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="font-semibold text-sm">Driver</p>
+              <p className="text-xs text-white/60">Account</p>
+            </div>
+            {showAccountMenu ? <ChevronUp className="w-4 h-4 text-white/60" /> : <ChevronDown className="w-4 h-4 text-white/60" />}
+          </button>
+        </div>
+
+        {showAccountMenu && (
+          <div className="fixed bottom-24 left-4 z-[60] w-56 rounded-2xl bg-slate-900 border border-white/10 overflow-hidden shadow-2xl backdrop-blur-2xl">
             <button
-              onClick={() => setShowAccountMenu((prev) => !prev)}
-              className="flex w-full items-center gap-3 rounded-xl bg-white/10 px-3 py-2 text-white hover:bg-white/20 transition-colors"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-3 px-4 py-4 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition-colors"
             >
-              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                <User className="w-5 h-5 text-white" />
-              </div>
-              <div className="flex-1 text-left">
-                <p className="font-semibold text-sm">Driver</p>
-                <p className="text-xs text-white/70">Account</p>
-              </div>
-              {showAccountMenu ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              <LogOut className="h-5 w-5" />
+              Logout
             </button>
           </div>
-
-          {showAccountMenu && (
-            <div className="fixed bottom-24 left-4 z-[60] w-56 rounded-xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
-              <button
-                onClick={handleLogout}
-                className="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors"
-              >
-                <LogOut className="h-4 w-4" />
-                Logout
-              </button>
-            </div>
-          )}
-        </>
-      )}
+        )}
     </div>
   );
 }

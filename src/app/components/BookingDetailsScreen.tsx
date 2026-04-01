@@ -1,5 +1,25 @@
 import { ArrowLeft, MapPin, Plus, Clock, Calendar, User, Users, CreditCard, Star, Navigation, Home, Search, Bell, User as UserIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  BAHRAIN_BOUNDS,
+  BAHRAIN_CENTER,
+  getUserLocation,
+  initializeMap,
+  listenDriversLive,
+  loadDriversMarkers,
+  loadGoogleMapsScript,
+  selectDropoff,
+  selectPickup,
+} from '../../services/googleMapsService';
+import { type DriverData } from '../../services/firebaseService';
+
+export interface BookingConfirmPayload {
+  pickupAddress: string;
+  dropoffAddress: string;
+  pickupLocation: { lat: number; lng: number };
+  dropoffLocation: { lat: number; lng: number };
+  matchingMode: 'ai' | 'manual';
+}
 
 interface BookingDetailsScreenProps {
   onBack: () => void;
@@ -8,7 +28,7 @@ interface BookingDetailsScreenProps {
   userName?: string;
   onNavigateLogin?: () => void;
   onNavigateRegister?: () => void;
-  onConfirm?: (pickup: string, dropoff: string) => void;
+  onConfirm?: (payload: BookingConfirmPayload) => void;
   initialPickup?: string;
   initialDropoff?: string;
 }
@@ -25,21 +45,211 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
   const [selectedPayment, setSelectedPayment] = useState('cash');
   const [notes, setNotes] = useState('');
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const [mapLoading, setMapLoading] = useState(true);
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const pickupMarkerRef = useRef<any>(null);
+  const dropoffMarkerRef = useRef<any>(null);
+  const driversMarkersRef = useRef<Map<string, any>>(new Map());
+  const hasPickupRef = useRef(false);
+  const pickupAutocompleteRef = useRef<HTMLInputElement | null>(null);
+  const dropoffAutocompleteRef = useRef<HTMLInputElement | null>(null);
+  const [pickupCoords, setPickupCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [dropoffCoords, setDropoffCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [showMatchingModeModal, setShowMatchingModeModal] = useState(false);
+  const pendingCoordsRef = useRef<{ pickup: { lat: number; lng: number }; dropoff: { lat: number; lng: number } } | null>(null);
 
   // Check if user is a guest (not logged in)
   const isGuest = !userName || userName === '' || userName === 'Guest User';
 
-  const handleConfirmBooking = () => {
-    if (pickupLocation && dropoffLocation) {
-      // If user is a guest, show authentication modal
-      if (isGuest) {
-        setShowAuthModal(true);
-      } else {
-        // If user is logged in, proceed with booking
-        if (onConfirm) {
-          onConfirm(pickupLocation, dropoffLocation);
-        }
+  const resolveInputCoordsIfNeeded = async () => {
+    if (!mapInstanceRef.current || !window.google?.maps) return { pickup: pickupCoords, dropoff: dropoffCoords };
+    const geocoder = new window.google.maps.Geocoder();
+    const geocodeAddress = (address: string) =>
+      new Promise<{ lat: number; lng: number } | null>((resolve) => {
+        geocoder.geocode(
+          {
+            address,
+            componentRestrictions: { country: "BH" },
+          },
+          (results: any, status: string) => {
+            if (status !== "OK" || !results?.[0]?.geometry?.location) {
+              resolve(null);
+              return;
+            }
+            const loc = results[0].geometry.location;
+            resolve({ lat: loc.lat(), lng: loc.lng() });
+          },
+        );
+      });
+
+    let pickup = pickupCoords;
+    let dropoff = dropoffCoords;
+    if (!pickup && pickupLocation.trim()) {
+      pickup = await geocodeAddress(pickupLocation.trim());
+      if (pickup) {
+        setPickupCoords(pickup);
+        selectPickup(pickupMarkerRef.current, mapInstanceRef.current, pickup);
       }
+    }
+    if (!dropoff && dropoffLocation.trim()) {
+      dropoff = await geocodeAddress(dropoffLocation.trim());
+      if (dropoff) {
+        setDropoffCoords(dropoff);
+        selectDropoff(dropoffMarkerRef.current, mapInstanceRef.current, dropoff);
+      }
+    }
+    return { pickup, dropoff };
+  };
+
+  const handleConfirmBooking = async () => {
+    if (!pickupLocation || !dropoffLocation) return;
+    const { pickup, dropoff } = await resolveInputCoordsIfNeeded();
+    if (!pickup || !dropoff) {
+      setLocationError('Please select valid Bahrain pickup/drop-off locations from map or suggestions.');
+      return;
+    }
+    pendingCoordsRef.current = { pickup, dropoff };
+    if (isGuest) {
+      setShowAuthModal(true);
+      return;
+    }
+    setShowMatchingModeModal(true);
+  };
+
+  const handleSelectMatchingMode = (mode: 'ai' | 'manual') => {
+    if (!onConfirm || !pendingCoordsRef.current) return;
+    onConfirm({
+      pickupAddress: pickupLocation,
+      dropoffAddress: dropoffLocation,
+      pickupLocation: pendingCoordsRef.current.pickup,
+      dropoffLocation: pendingCoordsRef.current.dropoff,
+      matchingMode: mode,
+    });
+    setShowMatchingModeModal(false);
+    pendingCoordsRef.current = null;
+  };
+
+  useEffect(() => {
+    let unDrivers: (() => void) | null = null;
+
+    const initMap = async () => {
+      if (!mapRef.current) return;
+      try {
+        const map = await initializeMap(mapRef.current, { center: BAHRAIN_CENTER, zoom: 12 });
+        mapInstanceRef.current = map;
+        pickupMarkerRef.current = new window.google.maps.Marker({
+          map: null,
+          icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
+        });
+        dropoffMarkerRef.current = new window.google.maps.Marker({
+          map: null,
+          icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
+        });
+
+        const geocoder = new window.google.maps.Geocoder();
+        map.addListener("click", (event: any) => {
+          const point = {
+            lat: event.latLng.lat(),
+            lng: event.latLng.lng(),
+          };
+          geocoder.geocode({ location: point }, (results: any, status: string) => {
+            const address = status === "OK" && results?.[0]?.formatted_address ? results[0].formatted_address : "Pinned location";
+            if (!hasPickupRef.current) {
+              hasPickupRef.current = true;
+              setPickupCoords(point);
+              setPickupLocation(address);
+              selectPickup(pickupMarkerRef.current, map, point);
+            } else {
+              setDropoffCoords(point);
+              setDropoffLocation(address);
+              selectDropoff(dropoffMarkerRef.current, map, point);
+            }
+          });
+        });
+
+        await loadGoogleMapsScript();
+        if (pickupAutocompleteRef.current) {
+          const pickupAuto = new window.google.maps.places.Autocomplete(pickupAutocompleteRef.current, {
+            componentRestrictions: { country: "bh" },
+            bounds: BAHRAIN_BOUNDS,
+            strictBounds: true,
+          });
+          pickupAuto.addListener("place_changed", () => {
+            const place = pickupAuto.getPlace();
+            const loc = place?.geometry?.location;
+            if (!loc) return;
+            const coords = { lat: loc.lat(), lng: loc.lng() };
+            hasPickupRef.current = true;
+            setPickupCoords(coords);
+            setPickupLocation(place.formatted_address || place.name || "");
+            selectPickup(pickupMarkerRef.current, map, coords);
+            map.panTo(coords);
+          });
+        }
+
+        if (dropoffAutocompleteRef.current) {
+          const dropoffAuto = new window.google.maps.places.Autocomplete(dropoffAutocompleteRef.current, {
+            componentRestrictions: { country: "bh" },
+            bounds: BAHRAIN_BOUNDS,
+            strictBounds: true,
+          });
+          dropoffAuto.addListener("place_changed", () => {
+            const place = dropoffAuto.getPlace();
+            const loc = place?.geometry?.location;
+            if (!loc) return;
+            const coords = { lat: loc.lat(), lng: loc.lng() };
+            setDropoffCoords(coords);
+            setDropoffLocation(place.formatted_address || place.name || "");
+            selectDropoff(dropoffMarkerRef.current, map, coords);
+            map.panTo(coords);
+          });
+        }
+
+        unDrivers = listenDriversLive(
+          (drivers: DriverData[]) => {
+            loadDriversMarkers(map, drivers, driversMarkersRef.current);
+          },
+          (error) => {
+            console.error("Drivers live listen failed:", error);
+          },
+        );
+      } catch (error) {
+        console.error("Map init failed:", error);
+        setLocationError("Google Maps could not load.");
+      } finally {
+        setMapLoading(false);
+      }
+    };
+
+    void initMap();
+
+    return () => {
+      if (unDrivers) unDrivers();
+      driversMarkersRef.current.forEach((marker) => marker.setMap(null));
+      driversMarkersRef.current.clear();
+    };
+  }, []);
+
+  const centerOnUserLocation = async () => {
+    if (!mapInstanceRef.current) return;
+    try {
+      const location = await getUserLocation();
+      mapInstanceRef.current.panTo(location);
+      mapInstanceRef.current.setZoom(14);
+      setLocationError("");
+      if (!pickupCoords) {
+        hasPickupRef.current = true;
+        setPickupCoords(location);
+        setPickupLocation("My current location");
+        selectPickup(pickupMarkerRef.current, mapInstanceRef.current, location);
+      }
+    } catch (error) {
+      console.error("User location failed:", error);
+      setLocationError("Location access denied. Using Bahrain center.");
+      mapInstanceRef.current.panTo(BAHRAIN_CENTER);
+      mapInstanceRef.current.setZoom(11);
     }
   };
 
@@ -103,13 +313,17 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
                 <div className="w-3 h-3 bg-purple-600 rounded-full"></div>
               </div>
               <input
+                ref={pickupAutocompleteRef}
                 type="text"
                 placeholder="Enter pickup location"
                 value={pickupLocation}
                 onChange={(e) => setPickupLocation(e.target.value)}
                 className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
               />
-              <button className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-600 hover:bg-purple-50 p-1 rounded">
+              <button
+                onClick={centerOnUserLocation}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-600 hover:bg-purple-50 p-1 rounded"
+              >
                 <Navigation className="w-5 h-5" />
               </button>
             </div>
@@ -168,6 +382,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
                 <div className="w-3 h-3 bg-red-600 rounded-full"></div>
               </div>
               <input
+                ref={dropoffAutocompleteRef}
                 type="text"
                 placeholder="Enter drop-off location"
                 value={dropoffLocation}
@@ -187,6 +402,17 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
               <span className="font-medium">Add Stop</span>
             </button>
           )}
+          <div className="mt-4">
+            <div className="h-64 rounded-xl border border-gray-200 overflow-hidden relative">
+              {mapLoading && (
+                <div className="absolute inset-0 bg-white/80 flex items-center justify-center text-sm text-gray-600 z-10">
+                  Loading Bahrain map...
+                </div>
+              )}
+              <div ref={mapRef} className="w-full h-full" />
+            </div>
+            {locationError && <p className="text-xs text-red-600 mt-2">{locationError}</p>}
+          </div>
         </div>
 
         {/* Ride Time Section */}
@@ -364,7 +590,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
       <div className="fixed bottom-20 left-0 right-0 px-6 py-4 bg-white border-t border-gray-200 shadow-lg">
         <button
           disabled={!pickupLocation || !dropoffLocation}
-          onClick={handleConfirmBooking}
+          onClick={() => void handleConfirmBooking()}
           className={`w-full py-4 rounded-full text-lg font-semibold shadow-lg transition-all ${
             pickupLocation && dropoffLocation
               ? 'bg-gradient-to-r from-purple-600 to-blue-500 text-white hover:shadow-xl active:scale-[0.98]'
@@ -375,7 +601,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
         </button>
         <p className="text-center text-xs text-gray-500 mt-2">
           {pickupLocation && dropoffLocation
-            ? 'Review your booking details before confirming'
+            ? 'You can pin on map or type address then choose AI/Manual'
             : 'Please enter pickup and drop-off locations'}
         </p>
       </div>
@@ -431,6 +657,35 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
                 className="w-full py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-full font-semibold hover:bg-gray-50 transition-all"
               >
                 Continue Browsing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMatchingModeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-6 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Choose Search Mode</h3>
+            <p className="text-gray-600 text-sm mb-5">Do you want AI recommendation or manual driver selection?</p>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleSelectMatchingMode('ai')}
+                className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-500 text-white rounded-full font-semibold"
+              >
+                AI Auto Recommendation
+              </button>
+              <button
+                onClick={() => handleSelectMatchingMode('manual')}
+                className="w-full py-3 border-2 border-purple-500 text-purple-700 rounded-full font-semibold hover:bg-purple-50"
+              >
+                Manual Search
+              </button>
+              <button
+                onClick={() => setShowMatchingModeModal(false)}
+                className="w-full py-3 border border-gray-300 text-gray-700 rounded-full font-semibold hover:bg-gray-50"
+              >
+                Cancel
               </button>
             </div>
           </div>

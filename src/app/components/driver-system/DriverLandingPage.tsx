@@ -8,15 +8,8 @@ export function DriverLandingPage({ onEnterSystem }: DriverLandingPageProps) {
       <div className="max-w-4xl w-full mx-auto px-8 text-center">
         {/* Logo */}
         <div className="flex justify-center mb-8">
-          <div className="w-28 h-28 rounded-full bg-white flex items-center justify-center shadow-2xl">
-            <div className="text-center">
-              <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
-                Go
-              </div>
-              <div className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent -mt-1">
-                Local
-              </div>
-            </div>
+          <div className="w-28 h-28 rounded-full bg-white flex items-center justify-center shadow-2xl overflow-hidden">
+            <img src="/logo.png" alt="GoLocal Logo" className="w-full h-full object-cover" />
           </div>
         </div>
 

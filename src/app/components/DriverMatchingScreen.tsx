@@ -1,6 +1,15 @@
 import { ArrowLeft, Phone, MessageCircle, X, Star, Navigation, Share2, Shield, Clock, Home, Search, Bell, User as UserIcon, Car } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { cancelOrder, listenOrderById, listenToDrivers, type DriverData as FirestoreDriverData, type OrderData } from '../../services/firebaseService';
+import { useEffect, useRef, useState } from 'react';
+import { cancelOrder, listenOrderById, listenToDrivers, setPreferredDriverForOrder, type DriverData as FirestoreDriverData, type OrderData } from '../../services/firebaseService';
+import {
+  BAHRAIN_CENTER,
+  animateMarker,
+  findNearestDrivers,
+  drawRoute,
+  initializeMap,
+  listenDriverTracking,
+  loadDriversMarkers,
+} from '../../services/googleMapsService';
 
 interface DriverData {
   uid: string;
@@ -11,6 +20,11 @@ interface DriverData {
   vehiclePlate: string;
   phone: string;
   status: 'available' | 'busy' | 'offline';
+  currentLocation: { lat: number; lng: number };
+  seats: number;
+  pricePerKm: number;
+  area: string;
+  distanceKm?: number;
 }
 
 interface DriverMatchingScreenProps {
@@ -20,16 +34,27 @@ interface DriverMatchingScreenProps {
   onDriverMatched?: () => void;
   userCity?: string;
   orderId?: string | null;
+  matchingMode?: 'ai' | 'manual';
 }
 
-export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, onDriverMatched, userCity = 'manama', orderId = null }: DriverMatchingScreenProps) {
-  const [isSearching, setIsSearching] = useState(true);
-  const [searchProgress, setSearchProgress] = useState(0);
+export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, onDriverMatched, userCity = 'manama', orderId = null, matchingMode = 'ai' }: DriverMatchingScreenProps) {
   const [driverInfo, setDriverInfo] = useState<DriverData | null>(null);
   const [drivers, setDrivers] = useState<DriverData[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [liveOrder, setLiveOrder] = useState<OrderData | null>(null);
+  const [mapLoading, setMapLoading] = useState(true);
+  const [flowMode, setFlowMode] = useState<'ai' | 'manual'>(matchingMode);
+  const [areaFilter, setAreaFilter] = useState(userCity);
+  const [maxPriceFilter, setMaxPriceFilter] = useState(5);
+  const [seatsFilter, setSeatsFilter] = useState(1);
+  const [aiRecommendation, setAiRecommendation] = useState<DriverData[]>([]);
+  const [actionLoading, setActionLoading] = useState(false);
+  const mapRef = useRef<any>(null);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const availableMarkersRef = useRef<Map<string, any>>(new Map());
+  const assignedMarkerRef = useRef<any>(null);
+  const routeRendererRef = useRef<any>(null);
 
   const formatDriver = (driver: FirestoreDriverData): DriverData => ({
     uid: driver.driverId,
@@ -40,6 +65,10 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
     vehiclePlate: '',
     phone: driver.phone || '',
     status: driver.status,
+    currentLocation: driver.currentLocation,
+    seats: Number((driver as any).seats ?? 4),
+    pricePerKm: Number((driver as any).pricePerKm ?? 2.5),
+    area: String((driver as any).area ?? userCity),
   });
 
   useEffect(() => {
@@ -83,20 +112,78 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
   }, [orderId]);
 
   useEffect(() => {
-    // Simulate searching for driver
-    const searchTimer = setInterval(() => {
-      setSearchProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(searchTimer);
-          setTimeout(() => setIsSearching(false), 500);
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 300);
-
-    return () => clearInterval(searchTimer);
+    let unTracking: (() => void) | null = null;
+    const initMap = async () => {
+      if (!mapContainerRef.current) return;
+      try {
+        const map = await initializeMap(mapContainerRef.current, { center: BAHRAIN_CENTER, zoom: 12 });
+        mapRef.current = map;
+        assignedMarkerRef.current = new window.google.maps.Marker({
+          map,
+          position: BAHRAIN_CENTER,
+          title: 'Assigned Driver',
+          icon: {
+            path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 5,
+            fillColor: '#4F46E5',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 1,
+          },
+        });
+      } catch (error) {
+        console.error('Matching map init failed:', error);
+      } finally {
+        setMapLoading(false);
+      }
+    };
+    void initMap();
+    return () => {
+      if (unTracking) unTracking();
+      availableMarkersRef.current.forEach((marker) => marker.setMap(null));
+      availableMarkersRef.current.clear();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const available = drivers
+      .filter((driver) => driver.status === 'available')
+      .map((driver) => ({
+        driverId: driver.uid,
+        name: driver.name,
+        phone: driver.phone,
+        carType: driver.vehicleType,
+        status: driver.status,
+        currentLocation: driver.currentLocation,
+      })) as any;
+    loadDriversMarkers(mapRef.current, available, availableMarkersRef.current);
+  }, [drivers]);
+
+  useEffect(() => {
+    if (!liveOrder?.assignedDriverId || !mapRef.current) return;
+    const unTrack = listenDriverTracking(
+      liveOrder.assignedDriverId,
+      async (location) => {
+        if (assignedMarkerRef.current) {
+          animateMarker(assignedMarkerRef.current, location);
+          mapRef.current.panTo(location);
+        }
+        try {
+          await drawRoute(
+            mapRef.current,
+            location,
+            liveOrder.pickupLocation,
+            routeRendererRef.current,
+          );
+        } catch (error) {
+          console.error('Driver route draw failed:', error);
+        }
+      },
+      (error) => console.error('Driver tracking listen failed:', error),
+    );
+    return () => unTrack();
+  }, [liveOrder?.assignedDriverId, liveOrder?.pickupLocation?.lat, liveOrder?.pickupLocation?.lng]);
 
   const getVehicleEmoji = (vehicleType: string) => {
     const type = vehicleType?.toLowerCase() || '';
@@ -110,6 +197,68 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
   const orderStatus = liveOrder?.status ?? 'pending';
   const assignedName = liveOrder?.assignedDriverName ?? null;
   const assignedPhone = liveOrder?.assignedDriverPhone ?? null;
+  const matchedDriver = liveOrder?.assignedDriverId
+    ? drivers.find((driver) => driver.uid === liveOrder.assignedDriverId) ?? displayDriver
+    : displayDriver;
+  const availableDrivers = drivers.filter((driver) => driver.status === 'available');
+  const filteredDrivers = availableDrivers
+    .filter((driver) => (areaFilter ? driver.area.toLowerCase().includes(areaFilter.toLowerCase()) : true))
+    .filter((driver) => driver.pricePerKm <= maxPriceFilter)
+    .filter((driver) => driver.seats >= seatsFilter);
+  const hasAssignedDriver = Boolean(liveOrder?.assignedDriverId);
+
+  useEffect(() => {
+    setFlowMode(matchingMode);
+  }, [matchingMode]);
+
+  useEffect(() => {
+    if (flowMode !== 'ai' || !liveOrder?.pickupLocation) {
+      setAiRecommendation([]);
+      return;
+    }
+    let ignore = false;
+    const recommend = async () => {
+      try {
+        const nearest = await findNearestDrivers(liveOrder.pickupLocation, 3);
+        if (ignore) return;
+        const mapped = nearest
+          .map((driver) => {
+            const local = drivers.find((item) => item.uid === driver.driverId);
+            if (!local) return null;
+            return {
+              ...local,
+              distanceKm: driver.distanceKm,
+            };
+          })
+          .filter((item): item is DriverData => Boolean(item));
+        setAiRecommendation(mapped);
+      } catch (error) {
+        console.error('Failed to calculate AI recommendation:', error);
+      }
+    };
+    void recommend();
+    return () => {
+      ignore = true;
+    };
+  }, [flowMode, liveOrder?.pickupLocation?.lat, liveOrder?.pickupLocation?.lng, drivers]);
+
+  const handleSelectDriver = async (driver: DriverData) => {
+    if (!orderId || orderStatus !== 'pending') return;
+    setActionLoading(true);
+    try {
+      await setPreferredDriverForOrder(orderId, {
+        driverId: driver.uid,
+        name: driver.name,
+        phone: driver.phone,
+      });
+      alert('Driver selected. Waiting for driver acceptance.');
+    } catch (error) {
+      console.error('Failed to select driver:', error);
+      alert('Failed to select driver right now. Please try again.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleCancelOrder = async () => {
     if (!orderId) return;
@@ -141,10 +290,10 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
           
           <div className="flex-1">
             <h1 className="text-white text-2xl font-bold">
-              {isSearching ? 'Finding Your Ride' : 'Driver Matched!'}
+              {hasAssignedDriver ? 'Driver Matched!' : 'Choose Your Driver'}
             </h1>
             <p className="text-white/90 text-sm">
-              {isSearching ? 'Please wait a moment...' : `Order status: ${orderStatus}`}
+              {hasAssignedDriver ? `Order status: ${orderStatus}` : 'AI recommendation or manual selection'}
             </p>
           </div>
         </div>
@@ -152,110 +301,118 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto px-6 py-6 pb-32">
+        <div className="w-full h-60 rounded-2xl overflow-hidden border border-gray-200 mb-6 relative">
+          {mapLoading && <div className="absolute inset-0 z-10 bg-white/80 text-sm text-gray-600 flex items-center justify-center">Loading live map...</div>}
+          <div ref={mapContainerRef} className="w-full h-full" />
+        </div>
         {loading ? (
-          <div className="flex flex-col items-center justify-center min-h-[500px]">
+          <div className="flex flex-col items-center justify-center min-h-[420px]">
             <h2 className="text-2xl font-bold text-gray-800 mb-2">Loading drivers...</h2>
             <p className="text-gray-600 text-center">Please wait while we sync live driver data.</p>
           </div>
         ) : errorMessage ? (
-          <div className="flex flex-col items-center justify-center min-h-[500px]">
+          <div className="flex flex-col items-center justify-center min-h-[420px]">
             <h2 className="text-2xl font-bold text-red-600 mb-2">Unable to load drivers</h2>
             <p className="text-gray-600 text-center">{errorMessage}</p>
           </div>
-        ) : !displayDriver ? (
-          <div className="flex flex-col items-center justify-center min-h-[500px]">
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">No drivers available</h2>
-            <p className="text-gray-600 text-center">All drivers are currently busy or offline. Try again in a moment.</p>
-          </div>
-        ) : isSearching ? (
-          /* Searching State */
-          <div className="flex flex-col items-center justify-center min-h-[500px]">
-            {/* Animated Loading Indicator */}
-            <div className="relative mb-8">
-              {/* Outer rotating ring */}
-              <div className="w-32 h-32 rounded-full border-4 border-purple-200 animate-spin">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-purple-600 rounded-full"></div>
-              </div>
-              
-              {/* Inner pulsing circle */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-gradient-to-r from-purple-600 to-blue-500 rounded-full flex items-center justify-center animate-pulse">
-                <Car className="w-10 h-10 text-white" />
+        ) : !hasAssignedDriver ? (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl shadow-md p-4">
+              <h3 className="font-bold text-gray-800 mb-1">Driver search mode</h3>
+              <p className="text-xs text-gray-500 mb-3">Choose how to search: AI recommendation or manual filtering.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setFlowMode('ai')}
+                  className={`py-2 rounded-lg font-medium text-sm ${flowMode === 'ai' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                >
+                  AI Auto
+                </button>
+                <button
+                  onClick={() => setFlowMode('manual')}
+                  className={`py-2 rounded-lg font-medium text-sm ${flowMode === 'manual' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                >
+                  Manual
+                </button>
               </div>
             </div>
 
-            {/* Progress Text */}
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Searching for a driver...</h2>
-            <p className="text-gray-600 text-center mb-6">
-              We're finding the best driver for you from {drivers.length} live drivers
-            </p>
-
-            {/* Progress Bar */}
-            <div className="w-full max-w-xs mb-8">
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-purple-600 to-blue-500 transition-all duration-300 ease-out"
-                  style={{ width: `${searchProgress}%` }}
-                ></div>
-              </div>
-              <p className="text-sm text-gray-500 mt-2 text-center">{searchProgress}%</p>
-            </div>
-
-            {/* Searching Steps */}
-            <div className="w-full max-w-md space-y-3">
-              <div className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                searchProgress >= 30 ? 'bg-green-50 border border-green-200' : 'bg-gray-100'
-              }`}>
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                  searchProgress >= 30 ? 'bg-green-500' : 'bg-gray-300'
-                }`}>
-                  {searchProgress >= 30 && (
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
+            {flowMode === 'manual' && (
+              <div className="bg-white rounded-2xl shadow-md p-4">
+                <h4 className="font-semibold text-gray-800 mb-3">Filter available drivers</h4>
+                <div className="grid grid-cols-1 gap-3">
+                  <input
+                    value={areaFilter}
+                    onChange={(event) => setAreaFilter(event.target.value)}
+                    placeholder="Area (e.g. Manama)"
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <label className="text-sm text-gray-700">Max price / km: BD {maxPriceFilter.toFixed(1)}</label>
+                  <input
+                    type="range"
+                    min={1}
+                    max={8}
+                    step={0.5}
+                    value={maxPriceFilter}
+                    onChange={(event) => setMaxPriceFilter(Number(event.target.value))}
+                  />
+                  <label className="text-sm text-gray-700">Minimum seats: {seatsFilter}</label>
+                  <input
+                    type="range"
+                    min={1}
+                    max={7}
+                    step={1}
+                    value={seatsFilter}
+                    onChange={(event) => setSeatsFilter(Number(event.target.value))}
+                  />
                 </div>
-                <span className={`text-sm ${searchProgress >= 30 ? 'text-green-700 font-medium' : 'text-gray-600'}`}>
-                  Analyzing nearby drivers
-                </span>
               </div>
+            )}
 
-              <div className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                searchProgress >= 60 ? 'bg-green-50 border border-green-200' : 'bg-gray-100'
-              }`}>
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                  searchProgress >= 60 ? 'bg-green-500' : 'bg-gray-300'
-                }`}>
-                  {searchProgress >= 60 && (
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
+            <div className="space-y-3">
+              {(flowMode === 'ai' ? aiRecommendation : filteredDrivers).map((driver) => (
+                <div key={driver.uid} className="bg-white rounded-2xl shadow-md p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-gray-800">{driver.name}</p>
+                      <p className="text-xs text-gray-500">{driver.vehicleType} • {driver.area}</p>
+                      <p className="text-xs text-gray-500">Seats: {driver.seats} • BD {driver.pricePerKm.toFixed(1)}/km</p>
+                      {typeof driver.distanceKm === 'number' && (
+                        <p className="text-xs text-purple-600 mt-1">Approx. {driver.distanceKm.toFixed(2)} km from pickup</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-700 font-semibold">{driver.rating.toFixed(1)} ⭐</p>
+                      <a href={`tel:${driver.phone}`} className="text-xs text-blue-600 underline">
+                        {driver.phone || 'No phone'}
+                      </a>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      disabled={actionLoading || !driver.phone || orderStatus !== 'pending'}
+                      onClick={() => void handleSelectDriver(driver)}
+                      className="flex-1 py-2 bg-gradient-to-r from-purple-600 to-blue-500 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+                    >
+                      Select this driver
+                    </button>
+                    <a
+                      href={`tel:${driver.phone}`}
+                      className="px-3 py-2 border border-green-500 text-green-600 rounded-lg text-sm font-semibold"
+                    >
+                      Call
+                    </a>
+                  </div>
                 </div>
-                <span className={`text-sm ${searchProgress >= 60 ? 'text-green-700 font-medium' : 'text-gray-600'}`}>
-                  Matching optimal route
-                </span>
-              </div>
+              ))}
 
-              <div className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                searchProgress >= 100 ? 'bg-green-50 border border-green-200' : 'bg-gray-100'
-              }`}>
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                  searchProgress >= 100 ? 'bg-green-500' : 'bg-gray-300'
-                }`}>
-                  {searchProgress >= 100 && (
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
+              {(flowMode === 'ai' ? aiRecommendation.length === 0 : filteredDrivers.length === 0) && (
+                <div className="bg-white rounded-2xl shadow-md p-6 text-center text-gray-600">
+                  No matching drivers with current filters.
                 </div>
-                <span className={`text-sm ${searchProgress >= 100 ? 'text-green-700 font-medium' : 'text-gray-600'}`}>
-                  Confirming driver
-                </span>
-              </div>
+              )}
             </div>
           </div>
         ) : (
-          /* Driver Matched State */
           <div className="space-y-4">
             {/* Success Badge */}
             <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center gap-3">
@@ -277,16 +434,16 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
               <div className="flex items-center gap-4 mb-6">
                 {/* Driver Photo */}
                 <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-blue-100 rounded-full flex items-center justify-center text-4xl shadow-md">
-                  {getVehicleEmoji(displayDriver.vehicleType)}
+                  {getVehicleEmoji(matchedDriver?.vehicleType || 'Car')}
                 </div>
 
                 {/* Driver Details */}
                 <div className="flex-1">
-                  <h2 className="text-xl font-bold text-gray-800">{assignedName || displayDriver.name}</h2>
+                  <h2 className="text-xl font-bold text-gray-800">{assignedName || matchedDriver?.name || 'Assigned driver'}</h2>
                   <div className="flex items-center gap-2 mb-1">
                     <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                    <span className="font-semibold text-gray-700">{displayDriver.rating.toFixed(1)}</span>
-                    <span className="text-sm text-gray-500">({displayDriver.totalTrips} trips)</span>
+                    <span className="font-semibold text-gray-700">{(matchedDriver?.rating ?? 4.8).toFixed(1)}</span>
+                    <span className="text-sm text-gray-500">({matchedDriver?.totalTrips ?? 0} trips)</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -297,9 +454,9 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
 
                 {/* Quick Actions */}
                 <div className="flex flex-col gap-2">
-                  <button className="w-12 h-12 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-md transition-colors">
+                  <a href={`tel:${assignedPhone || matchedDriver?.phone || ''}`} className="w-12 h-12 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-md transition-colors">
                     <Phone className="w-5 h-5 text-white" />
-                  </button>
+                  </a>
                   <button className="w-12 h-12 bg-blue-500 hover:bg-blue-600 rounded-full flex items-center justify-center shadow-md transition-colors">
                     <MessageCircle className="w-5 h-5 text-white" />
                   </button>
@@ -315,11 +472,11 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
                     <p className="text-xs text-gray-500 mb-1">Vehicle Type</p>
-                    <p className="font-medium text-gray-800">{displayDriver.vehicleType}</p>
+                    <p className="font-medium text-gray-800">{matchedDriver?.vehicleType || 'Car'}</p>
                   </div>
                   <div className="col-span-2">
                     <p className="text-xs text-gray-500 mb-1">Plate Number</p>
-                    <p className="text-2xl font-bold text-purple-600 tracking-wider">{displayDriver.vehiclePlate}</p>
+                    <p className="text-2xl font-bold text-purple-600 tracking-wider">{matchedDriver?.vehiclePlate || '--'}</p>
                   </div>
                 </div>
               </div>

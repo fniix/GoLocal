@@ -75,13 +75,13 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
       {/* Header Section */}
       <div className="bg-gradient-to-r from-purple-600 to-blue-500 px-6 pt-6 pb-8 rounded-b-3xl shadow-lg">
         <div className="flex items-center justify-between mb-4">
-          <button 
+          <button
             onClick={onBack}
             className="flex items-center text-white hover:bg-white/10 rounded-full p-2 transition-colors"
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
-          
+
           {/* Profile Avatar with Guest Badge */}
           <div className="flex items-center gap-2">
             {!userName && (
@@ -112,7 +112,7 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
         <div className="px-6 -mt-4 mb-6">
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden h-64 relative">
             {/* Mock Map with Grid Pattern */}
-            <div 
+            <div
               className="absolute inset-0 bg-gradient-to-br from-blue-100 to-purple-100 transition-transform duration-300"
               style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center' }}
             >
@@ -120,12 +120,12 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
               <svg className="w-full h-full opacity-20">
                 <defs>
                   <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#6366f1" strokeWidth="1"/>
+                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#6366f1" strokeWidth="1" />
                   </pattern>
                 </defs>
                 <rect width="100%" height="100%" fill="url(#grid)" />
               </svg>
-              
+
               {/* Current Location Marker (Manama) */}
               <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
                 <div className="relative">
@@ -164,8 +164,8 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
                 const position = positions[index] || { top: '30%', left: '30%' };
 
                 return (
-                  <div 
-                    key={region.name} 
+                  <div
+                    key={region.name}
                     className="absolute transform -translate-x-1/2 -translate-y-1/2"
                     style={{ top: position.top, left: position.left }}
                   >
@@ -227,15 +227,15 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
 
             {/* Map Controls */}
             <div className="absolute top-4 right-4 flex flex-col gap-2">
-              <button 
-                className="w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed" 
+              <button
+                className="w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleZoomIn}
                 disabled={zoomLevel >= 2.5}
               >
                 <span className="text-gray-700 text-xl font-bold">+</span>
               </button>
-              <button 
-                className="w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed" 
+              <button
+                className="w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleZoomOut}
                 disabled={zoomLevel <= 0.5}
               >
@@ -244,8 +244,8 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
             </div>
 
             {/* Current Location Button */}
-            <button 
-              className="absolute bottom-4 right-4 w-12 h-12 bg-purple-600 rounded-full shadow-lg flex items-center justify-center hover:bg-purple-700 active:scale-95 transition-all" 
+            <button
+              className="absolute bottom-4 right-4 w-12 h-12 bg-purple-600 rounded-full shadow-lg flex items-center justify-center hover:bg-purple-700 active:scale-95 transition-all"
               onClick={handleResetLocation}
             >
               <Navigation className="w-6 h-6 text-white" />
@@ -276,10 +276,10 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
         {/* Services Section */}
         <div className="px-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">Our Services</h2>
-          
+
           <div className="grid grid-cols-2 gap-4">
             {/* Private Driver Card */}
-            <button 
+            <button
               onClick={() => handleServiceClick('private-driver')}
               className="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition-all active:scale-95"
             >
@@ -291,7 +291,7 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
             </button>
 
             {/* Private Bus Card */}
-            <button 
+            <button
               onClick={() => handleServiceClick('private-bus')}
               className="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition-all active:scale-95"
             >
@@ -303,7 +303,7 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
             </button>
 
             {/* OnTheWay Card */}
-            <button 
+            <button
               onClick={() => handleServiceClick('ontheway')}
               className="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition-all active:scale-95"
             >
@@ -315,7 +315,7 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
             </button>
 
             {/* Mandoob Card */}
-            <button 
+            <button
               onClick={() => handleServiceClick('mandoob')}
               className="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition-all active:scale-95"
             >
@@ -337,7 +337,7 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
             <span className="text-xs">Home</span>
           </button>
 
-          <button 
+          <button
             onClick={onViewSearch}
             className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
           >
@@ -345,7 +345,7 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
             <span className="text-xs">Search</span>
           </button>
 
-          <button 
+          <button
             onClick={onViewHistory}
             className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
           >
@@ -353,7 +353,7 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
             <span className="text-xs">History</span>
           </button>
 
-          <button 
+          <button
             onClick={onViewActivity}
             className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
           >
@@ -361,7 +361,7 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
             <span className="text-xs">Activity</span>
           </button>
 
-          <button 
+          <button
             onClick={onViewProfile}
             className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
           >

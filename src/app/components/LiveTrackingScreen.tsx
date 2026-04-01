@@ -1,23 +1,40 @@
 import { ArrowLeft, Phone, MessageCircle, Shield, Share2, Star, MapPin, Navigation, Clock, DollarSign, Home, Search, Bell, User as UserIcon, ChevronUp, ChevronDown, AlertCircle, Zap, TrendingUp } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { listenOrderById } from '../../services/firebaseService';
+import {
+  BAHRAIN_CENTER,
+  animateMarker,
+  drawRoute,
+  initializeMap,
+  listenDriverTracking,
+  mockMovementForDemo,
+} from '../../services/googleMapsService';
 
 interface LiveTrackingScreenProps {
   onBack: () => void;
   driverName: string;
   pickupLocation: string;
   dropoffLocation: string;
+  orderId?: string | null;
   onTripComplete?: () => void;
 }
 
-export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoffLocation, onTripComplete }: LiveTrackingScreenProps) {
+export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoffLocation, orderId, onTripComplete }: LiveTrackingScreenProps) {
   const [rideStatus, setRideStatus] = useState<'arriving' | 'picked-up' | 'en-route'>('arriving');
   const [estimatedTime, setEstimatedTime] = useState(3);
   const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(false);
   const [currentSpeed, setCurrentSpeed] = useState(45);
   const [distanceRemaining, setDistanceRemaining] = useState(5.2);
   const [showEmergencyMenu, setShowEmergencyMenu] = useState(false);
+  const [mapLoading, setMapLoading] = useState(true);
+  const [mapError, setMapError] = useState('');
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<any>(null);
+  const driverMarkerRef = useRef<any>(null);
+  const pickupMarkerRef = useRef<any>(null);
+  const dropoffMarkerRef = useRef<any>(null);
+  const routeRendererRef = useRef<any>(null);
 
-  // Mock driver data
   const driverInfo = {
     name: 'Ahmed Al-Khalifa',
     photo: '👨‍💼',
@@ -28,7 +45,7 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
     phone: '+973 3456 7890'
   };
 
-  // Simulate ride progress
+  // Keep simple ride-state simulation while map tracking is real.
   useEffect(() => {
     const progressTimer = setInterval(() => {
       if (rideStatus === 'arriving' && estimatedTime > 0) {
@@ -43,6 +60,109 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
 
     return () => clearInterval(progressTimer);
   }, [rideStatus, estimatedTime]);
+
+  useEffect(() => {
+    let unOrder: (() => void) | null = null;
+    let unDriver: (() => void) | null = null;
+    let stopMock: (() => void) | null = null;
+
+    const init = async () => {
+      if (!mapContainerRef.current) return;
+      try {
+        const map = await initializeMap(mapContainerRef.current, { center: BAHRAIN_CENTER, zoom: 12 });
+        mapRef.current = map;
+
+        pickupMarkerRef.current = new window.google.maps.Marker({
+          map,
+          position: BAHRAIN_CENTER,
+          icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
+          title: "Pickup",
+        });
+        dropoffMarkerRef.current = new window.google.maps.Marker({
+          map,
+          position: { lat: BAHRAIN_CENTER.lat + 0.05, lng: BAHRAIN_CENTER.lng + 0.05 },
+          icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
+          title: "Dropoff",
+        });
+        driverMarkerRef.current = new window.google.maps.Marker({
+          map,
+          position: BAHRAIN_CENTER,
+          title: "Driver",
+          icon: {
+            path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 5,
+            fillColor: "#4F46E5",
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 1,
+          },
+        });
+
+        if (!orderId) {
+          setMapLoading(false);
+          return;
+        }
+
+        unOrder = listenOrderById(orderId, (order) => {
+          if (!order || !mapRef.current) return;
+          pickupMarkerRef.current?.setPosition(order.pickupLocation);
+          dropoffMarkerRef.current?.setPosition(order.dropoffLocation);
+          mapRef.current.panTo(order.pickupLocation);
+          setDistanceRemaining(
+            Math.max(
+              0.5,
+              Number(
+                (
+                  Math.abs(order.pickupLocation.lat - order.dropoffLocation.lat) * 111 +
+                  Math.abs(order.pickupLocation.lng - order.dropoffLocation.lng) * 90
+                ).toFixed(1),
+              ),
+            ),
+          );
+
+          if (order.assignedDriverId) {
+            unDriver?.();
+            unDriver = listenDriverTracking(
+              order.assignedDriverId,
+              async (location) => {
+                if (driverMarkerRef.current) {
+                  animateMarker(driverMarkerRef.current, location);
+                }
+                try {
+                  if (order.status === 'accepted') {
+                    await drawRoute(mapRef.current, location, order.pickupLocation, routeRendererRef.current);
+                  } else {
+                    await drawRoute(mapRef.current, order.pickupLocation, order.dropoffLocation, routeRendererRef.current);
+                  }
+                } catch (error) {
+                  console.error('Draw route failed:', error);
+                }
+              },
+              (error) => {
+                console.error('Driver tracking failed:', error);
+                if (!stopMock) {
+                  stopMock = mockMovementForDemo(order.assignedDriverId!, order.pickupLocation);
+                }
+              },
+            );
+          }
+        });
+      } catch (error) {
+        console.error('Live map init failed:', error);
+        setMapError('Unable to load live map.');
+      } finally {
+        setMapLoading(false);
+      }
+    };
+
+    void init();
+
+    return () => {
+      if (unOrder) unOrder();
+      if (unDriver) unDriver();
+      if (stopMock) stopMock();
+    };
+  }, [orderId]);
 
   const getRideStatusInfo = () => {
     switch (rideStatus) {
@@ -76,74 +196,18 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
     <div className="size-full bg-gray-900 flex flex-col relative overflow-hidden">
       {/* Map Section */}
       <div className="flex-1 relative bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900">
-        {/* Mock Map Background */}
         <div className="absolute inset-0">
-          {/* Grid pattern to simulate map */}
-          <div className="absolute inset-0 opacity-20"
-            style={{
-              backgroundImage: `
-                linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
-              `,
-              backgroundSize: '50px 50px'
-            }}
-          />
-          
-          {/* Route Line */}
-          <svg className="absolute inset-0 w-full h-full">
-            <defs>
-              <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" style={{ stopColor: '#a855f7', stopOpacity: 1 }} />
-                <stop offset="100%" style={{ stopColor: '#3b82f6', stopOpacity: 1 }} />
-              </linearGradient>
-            </defs>
-            {/* Main route path */}
-            <path
-              d="M 100 450 Q 200 350, 300 300 T 500 200 T 700 150"
-              stroke="url(#routeGradient)"
-              strokeWidth="6"
-              fill="none"
-              strokeDasharray="10 5"
-              className="animate-pulse"
-            />
-          </svg>
-
-          {/* Pickup Location Marker */}
-          <div className="absolute bottom-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2">
-            <div className="relative">
-              <div className="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center shadow-lg border-4 border-white animate-pulse">
-                <MapPin className="w-6 h-6 text-white" />
-              </div>
-              <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-purple-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                Pickup
-              </div>
+          {mapLoading && (
+            <div className="absolute inset-0 z-10 bg-black/40 text-white flex items-center justify-center">
+              Loading live Bahrain map...
             </div>
-          </div>
-
-          {/* Dropoff Location Marker */}
-          <div className="absolute top-1/4 right-1/4 -translate-x-1/2 -translate-y-1/2">
-            <div className="relative">
-              <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center shadow-lg border-4 border-white">
-                <MapPin className="w-6 h-6 text-white" />
-              </div>
-              <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-red-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                Destination
-              </div>
+          )}
+          <div ref={mapContainerRef} className="w-full h-full" />
+          {mapError && (
+            <div className="absolute bottom-24 left-4 right-4 z-10 bg-red-600 text-white text-sm rounded-lg px-3 py-2">
+              {mapError}
             </div>
-          </div>
-
-          {/* Vehicle Marker (Driver) */}
-          <div className="absolute bottom-1/3 left-1/3 -translate-x-1/2 -translate-y-1/2">
-            <div className="relative animate-bounce">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-600 to-blue-500 rounded-full flex items-center justify-center shadow-2xl border-4 border-white">
-                <span className="text-2xl">🚗</span>
-              </div>
-              {/* Direction indicator */}
-              <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
-                <Navigation className="w-3 h-3 text-white" style={{ transform: 'rotate(45deg)' }} />
-              </div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Top Controls */}

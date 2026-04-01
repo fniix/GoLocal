@@ -3,6 +3,7 @@ import { AdminSidebar } from './AdminSidebar';
 import { AdminTopBar } from './AdminTopBar';
 import { CheckCircle, Pencil, Search, Trash2 } from 'lucide-react';
 import { deleteUser, listenForAllUsers, updateUserByAdmin } from '../../../services/firebaseService';
+import { auth } from '../../../firebase';
 
 interface UserRow {
   id: string;
@@ -25,6 +26,7 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
   const [successMessage, setSuccessMessage] = useState('');
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', phone: '', role: 'user' as 'user' | 'driver' | 'admin' });
+  const currentAdminUid = auth.currentUser?.uid ?? '';
 
   useEffect(() => {
     const unsubscribe = listenForAllUsers(
@@ -58,6 +60,10 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
   });
 
   const openEditModal = (user: UserRow) => {
+    if (user.role === 'admin') {
+      alert('Admin accounts are protected and cannot be edited here.');
+      return;
+    }
     setEditingUser(user);
     setEditForm({ name: user.name, phone: user.phone, role: user.role });
   };
@@ -81,6 +87,15 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
   };
 
   const handleDeleteUser = async (userId: string) => {
+    const target = users.find((item) => item.id === userId);
+    if (target?.role === 'admin') {
+      alert('Admin accounts are protected and cannot be deleted here.');
+      return;
+    }
+    if (userId === currentAdminUid) {
+      alert('You cannot delete your current admin account.');
+      return;
+    }
     if (!confirm('Delete this user permanently?')) return;
     try {
       await deleteUser(userId);
@@ -155,14 +170,16 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => openEditModal(user)}
-                              className="px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1"
+                              disabled={user.role === 'admin'}
+                              className="px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                             >
                               <Pencil className="w-3 h-3" />
                               Edit
                             </button>
                             <button
                               onClick={() => handleDeleteUser(user.id)}
-                              className="px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1"
+                              disabled={user.role === 'admin' || user.id === currentAdminUid}
+                              className="px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                             >
                               <Trash2 className="w-3 h-3" />
                               Delete
