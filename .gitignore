@@ -19,7 +19,7 @@ firebase-debug.*.log*
 
 # Runtime data
 pids
-*.pid
+*.pid 
 *.seed
 *.pid.lock
 
@@ -67,3 +67,16 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules

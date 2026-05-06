@@ -21,6 +21,22 @@ export type UserRole = "user" | "driver" | "admin";
 export type DriverStatus = "available" | "busy" | "offline";
 export type OrderStatus = "pending" | "accepted" | "rejected" | "completed" | "cancelled";
 
+export interface OfferData {
+  offerId: string;
+  driverId: string;
+  driverName: string;
+  fromCity: string;
+  fromArea: string;
+  toCity: string;
+  toArea: string;
+  serviceType: string;
+  priceType: string;
+  basePrice: string;
+  availableTime: string;
+  status: 'active' | 'completed' | 'cancelled';
+  createdAt?: unknown;
+}
+
 export interface UserData {
   uid: string;
   name: string;
@@ -265,6 +281,48 @@ export async function createOrder(input: {
   });
   await updateDoc(orderRef, { orderId: orderRef.id });
   return orderRef.id;
+}
+
+export async function createOffer(input: Omit<OfferData, 'offerId' | 'driverId' | 'driverName' | 'status' | 'createdAt'>) {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error("Driver not authenticated");
+
+  const driverProfile = await fetchUserProfile(currentUser.uid);
+  const driverName = driverProfile ? driverProfile.name : "Unknown Driver";
+
+  const offerRef = await addDoc(collection(db, "offers"), {
+    ...input,
+    driverId: currentUser.uid,
+    driverName,
+    status: 'active',
+    createdAt: serverTimestamp(),
+  });
+  await updateDoc(offerRef, { offerId: offerRef.id });
+  return offerRef.id;
+}
+
+export function listenDriverOffers(
+  driverId: string,
+  onData: (offers: OfferData[]) => void,
+  onError?: (error: unknown) => void,
+): Unsubscribe {
+  const offersQuery = query(
+    collection(db, "offers"),
+    where("driverId", "==", driverId)
+  );
+  return onSnapshot(
+    offersQuery,
+    (snapshot) => {
+      const data = snapshot.docs.map((item) => ({ offerId: item.id, ...item.data() } as OfferData));
+      data.sort((a, b) => {
+         const timeA = (a.createdAt as any)?.toMillis?.() || 0;
+         const timeB = (b.createdAt as any)?.toMillis?.() || 0;
+         return timeB - timeA;
+      });
+      onData(data);
+    },
+    onError,
+  );
 }
 
 export async function updateOrder(

@@ -81,5 +81,12 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
     }
+
+    match /offers/{offerId} {
+      allow read: if isSignedIn();
+      allow create: if isDriver() && request.resource.data.driverId == request.auth.uid;
+      allow update: if isAdmin() || (isDriver() && resource.data.driverId == request.auth.uid);
+      allow delete: if isAdmin() || (isDriver() && resource.data.driverId == request.auth.uid);
+    }
   }
 }

@@ -9,6 +9,7 @@ import { PrivacySecurityScreen } from './PrivacySecurityScreen';
 import { HelpCenterScreen } from './HelpCenterScreen';
 import { TermsPoliciesScreen } from './TermsPoliciesScreen';
 import { AboutScreen } from './AboutScreen';
+import { GiftVoucherScreen } from './GiftVoucherScreen';
 
 interface ProfileScreenProps {
   onBack: () => void;
@@ -34,7 +35,7 @@ export function ProfileScreen({ onBack, userName, userPhone, userEmail, onNaviga
   const isGuest = userName === 'Guest User';
 
   // Items that require authentication
-  const requiresAuth = ['edit-profile', 'saved-locations', 'payment-methods', 'notifications', 'privacy'];
+  const requiresAuth = ['edit-profile', 'saved-locations', 'payment-methods', 'notifications', 'privacy', 'gift-vouchers'];
 
   // Handle profile item click
   const handleItemClick = (itemId: string) => {
@@ -114,6 +115,12 @@ export function ProfileScreen({ onBack, userName, userPhone, userEmail, onNaviga
             onBack={() => setSelectedScreen(null)}
           />
         );
+      case 'gift-vouchers':
+        return (
+          <GiftVoucherScreen
+            onBack={() => setSelectedScreen(null)}
+          />
+        );
       default:
         return null;
     }
@@ -151,6 +158,14 @@ export function ProfileScreen({ onBack, userName, userPhone, userEmail, onNaviga
       label: 'Payment Methods',
       description: 'Manage cards and wallets',
       color: 'green',
+      badge: null
+    },
+    {
+      id: 'gift-vouchers',
+      icon: <Gift className="w-5 h-5" />,
+      label: 'Gift Vouchers',
+      description: 'Create and share gift codes',
+      color: 'pink',
       badge: null
     }
   ];

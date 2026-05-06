@@ -1,7 +1,7 @@
 import { Home, FileText, Inbox, Truck, DollarSign, Star, User, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { auth } from '../../../firebase';
-import { listenDriverAssignedOrders, type OrderData } from '../../../services/firebaseService';
+import { listenDriverOffers, type OfferData } from '../../../services/firebaseService';
 
 interface CreateDeliveryOfferProps {
   onNavigateToDashboard: () => void;
@@ -22,27 +22,27 @@ export function MyOffers({
   onNavigateToReviews,
   onNavigateToProfile,
 }: CreateDeliveryOfferProps) {
-  const [assignedOrders, setAssignedOrders] = useState<OrderData[]>([]);
+  const [publishedOffers, setPublishedOffers] = useState<OfferData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     const driverUid = auth.currentUser?.uid;
     if (!driverUid) {
-      setAssignedOrders([]);
+      setPublishedOffers([]);
       setLoading(false);
       return;
     }
 
-    const unsubscribe = listenDriverAssignedOrders(
+    const unsubscribe = listenDriverOffers(
       driverUid,
-      (orders) => {
-        setAssignedOrders(orders);
+      (offers) => {
+        setPublishedOffers(offers);
         setLoading(false);
       },
       (snapshotError) => {
-        console.error('Failed to load assigned orders:', snapshotError);
-        setError('Unable to load your assigned orders.');
+        console.error('Failed to load published offers:', snapshotError);
+        setError('Unable to load your published offers.');
         setLoading(false);
       }
     );
@@ -138,13 +138,17 @@ export function MyOffers({
 
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
-        <header className="bg-white border-b border-slate-200 px-8 py-6 sticky top-0 z-10 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">My Assigned Orders</h1>
-              <p className="text-slate-500 mt-1">Live orders assigned to you</p>
-            </div>
+        <header className="bg-white border-b border-slate-200 px-8 py-6 sticky top-0 z-10 shadow-sm flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">My Published Offers</h1>
+            <p className="text-slate-500 mt-1">Live offers you have created</p>
           </div>
+          <button
+            onClick={onNavigateToCreateOffer}
+            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-500 text-white font-semibold hover:shadow-lg transition-all"
+          >
+            Create New Offer
+          </button>
         </header>
 
         {/* Offers Content */}
@@ -152,74 +156,78 @@ export function MyOffers({
           {/* Stats Summary */}
           <div className="grid grid-cols-3 gap-6 mb-8">
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <p className="text-slate-500 text-sm mb-1 font-medium">Total Assigned</p>
-              <p className="text-3xl font-bold text-slate-900">{assignedOrders.length}</p>
+              <p className="text-slate-500 text-sm mb-1 font-medium">Total Published</p>
+              <p className="text-3xl font-bold text-slate-900">{publishedOffers.length}</p>
             </div>
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <p className="text-slate-500 text-sm mb-1 font-medium">Accepted</p>
+              <p className="text-slate-500 text-sm mb-1 font-medium">Active Offers</p>
               <p className="text-3xl font-bold text-green-600">
-                {assignedOrders.filter((order) => order.status === 'accepted').length}
+                {publishedOffers.filter((offer) => offer.status === 'active').length}
               </p>
             </div>
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
               <p className="text-slate-500 text-sm mb-1 font-medium">Completed</p>
               <p className="text-3xl font-bold text-blue-600">
-                {assignedOrders.filter((order) => order.status === 'completed').length}
+                {publishedOffers.filter((offer) => offer.status === 'completed').length}
               </p>
             </div>
           </div>
 
-          {/* Orders List */}
+          {/* Offers List */}
           {loading ? (
             <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-12 text-center">
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Loading assigned orders...</h3>
-              <p className="text-gray-500">Listening for your orders in real-time.</p>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Loading published offers...</h3>
+              <p className="text-gray-500">Listening for your offers in real-time.</p>
             </div>
           ) : error ? (
             <div className="bg-red-500/10 border-2 border-red-500/20 rounded-2xl p-6 backdrop-blur-md shadow-2xl shadow-red-500/5">
-              <h3 className="text-lg font-bold text-red-400 mb-2">Failed to load orders</h3>
+              <h3 className="text-lg font-bold text-red-400 mb-2">Failed to load offers</h3>
               <p className="text-red-300/80">{error}</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {assignedOrders.map((order) => (
-                <div key={order.orderId} className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+              {publishedOffers.map((offer) => (
+                <div key={offer.offerId} className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
-                      <p className="text-sm text-gray-500 mb-1">Order ID</p>
-                      <p className="font-bold text-gray-800">{order.orderId}</p>
-                      <p className="text-sm text-gray-600 mt-2">{order.pickupAddress || 'Pickup'} → {order.dropoffAddress || 'Dropoff'}</p>
+                      <p className="text-sm text-gray-500 mb-1">Offer ID: {offer.offerId}</p>
+                      <p className="font-bold text-gray-800 text-lg">{offer.serviceType}</p>
+                      <p className="text-sm text-gray-600 mt-2 flex items-center gap-2">
+                        <span className="font-semibold text-purple-600">{offer.fromCity}</span> 
+                        <span className="text-xs text-gray-400">({offer.fromArea})</span>
+                        → 
+                        <span className="font-semibold text-blue-600">{offer.toCity}</span>
+                        <span className="text-xs text-gray-400">({offer.toArea})</span>
+                      </p>
                     </div>
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        order.status === 'accepted'
-                          ? 'bg-blue-100 text-blue-700'
-                          : order.status === 'completed'
+                        offer.status === 'active'
                           ? 'bg-green-100 text-green-700'
-                          : order.status === 'cancelled'
-                          ? 'bg-red-100 text-red-700'
-                          : order.status === 'rejected'
-                          ? 'bg-red-100 text-red-700'
-                          : 'bg-orange-100 text-orange-700'
+                          : offer.status === 'completed'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-red-100 text-red-700'
                       }`}
                     >
-                      {order.status}
+                      {offer.status}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-100">
                     <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 mb-1">Passenger</p>
-                      <p className="text-sm font-semibold text-gray-800">{order.userName}</p>
+                      <p className="text-xs text-gray-500 mb-1">Pricing</p>
+                      <p className="text-sm font-semibold text-gray-800">{offer.basePrice} BD ({offer.priceType})</p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 mb-1">Phone</p>
-                      <p className="text-sm font-semibold text-gray-800">{order.userPhone}</p>
+                      <p className="text-xs text-gray-500 mb-1">Available</p>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {new Date(offer.availableTime).toLocaleString()}
+                      </p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-3">
                       <p className="text-xs text-gray-500 mb-1">Created</p>
                       <p className="text-sm font-semibold text-gray-800">
-                        {(order.createdAt as any)?.toDate?.()?.toLocaleString?.() || 'Live'}
+                        {(offer.createdAt as any)?.toDate?.()?.toLocaleString?.() || 'Live'}
                       </p>
                     </div>
                   </div>
@@ -229,18 +237,18 @@ export function MyOffers({
           )}
 
           {/* Empty State */}
-          {!loading && !error && assignedOrders.length === 0 && (
+          {!loading && !error && publishedOffers.length === 0 && (
             <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-12 text-center">
               <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <FileText className="w-10 h-10 text-gray-400" />
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">No assigned orders</h3>
-              <p className="text-gray-500 mb-6">Accepted orders will appear here instantly.</p>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">No published offers</h3>
+              <p className="text-gray-500 mb-6">Create a new offer to start receiving requests from customers.</p>
               <button
-                onClick={onNavigateToIncomingRequests}
+                onClick={onNavigateToCreateOffer}
                 className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-blue-500 text-white font-semibold hover:shadow-lg transition-all"
               >
-                View Pending Orders
+                Create Delivery Offer
               </button>
             </div>
           )}

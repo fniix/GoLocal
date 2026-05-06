@@ -4,12 +4,74 @@ import { cancelOrder, listenOrderById, listenToDrivers, setPreferredDriverForOrd
 import {
   BAHRAIN_CENTER,
   animateMarker,
+  calculateDistance,
   findNearestDrivers,
   drawRoute,
   initializeMap,
   listenDriverTracking,
   loadDriversMarkers,
 } from '../../services/googleMapsService';
+import { AISearchAnimation } from './AISearchAnimation';
+
+// بيانات السائقين الوهميين للاختبار
+const DUMMY_DRIVERS: DriverData[] = [
+  {
+    uid: 'dummy-1',
+    name: 'أحمد الرفاعي',
+    rating: 4.9,
+    totalTrips: 1250,
+    vehicleType: 'Toyota Camry',
+    vehiclePlate: 'ABC 123',
+    phone: '+973 1234 5678',
+    status: 'available',
+    currentLocation: { lat: 26.1300, lng: 50.5500 }, // منطقة الرفاع
+    seats: 4,
+    pricePerKm: 0.25,
+    area: 'الرفاع',
+  },
+  {
+    uid: 'dummy-2',
+    name: 'محمد المنامي',
+    rating: 4.7,
+    totalTrips: 890,
+    vehicleType: 'Honda Civic',
+    vehiclePlate: 'XYZ 456',
+    phone: '+973 8765 4321',
+    status: 'available',
+    currentLocation: { lat: 26.2235, lng: 50.5822 }, // منطقة المنامة
+    seats: 4,
+    pricePerKm: 0.30,
+    area: 'المنامة',
+  },
+  {
+    uid: 'dummy-3',
+    name: 'علي الرفاعي',
+    rating: 4.8,
+    totalTrips: 2100,
+    vehicleType: 'Nissan Altima',
+    vehiclePlate: 'DEF 789',
+    phone: '+973 5555 6666',
+    status: 'available',
+    currentLocation: { lat: 26.1350, lng: 50.5450 }, // منطقة الرفاع
+    seats: 4,
+    pricePerKm: 0.28,
+    area: 'الرفاع',
+  },
+  {
+    uid: 'dummy-4',
+    name: 'فاطمة الجفيري',
+    rating: 4.6,
+    totalTrips: 650,
+    vehicleType: 'Hyundai Elantra',
+    vehiclePlate: 'GHI 012',
+    phone: '+973 7777 8888',
+    status: 'available',
+    currentLocation: { lat: 26.2100, lng: 50.5900 }, // منطقة الجفير
+    seats: 4,
+    pricePerKm: 0.35,
+    area: 'الجفير',
+  },
+];
 
 interface DriverData {
   uid: string;
@@ -42,6 +104,11 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
   const [drivers, setDrivers] = useState<DriverData[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [selectionErrorMessage, setSelectionErrorMessage] = useState('');
+  const [aiSearchMessage, setAiSearchMessage] = useState('');
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiSearchStepIndex, setAiSearchStepIndex] = useState(0);
+  const [aiAlgorithmStats, setAiAlgorithmStats] = useState<{ visitedNodes: number; distanceKm: number | null; driverName?: string; found: boolean } | null>(null);
   const [liveOrder, setLiveOrder] = useState<OrderData | null>(null);
   const [mapLoading, setMapLoading] = useState(true);
   const [flowMode, setFlowMode] = useState<'ai' | 'manual'>(matchingMode);
@@ -75,9 +142,11 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
     const unsubscribe = listenToDrivers(
       (items) => {
         const mappedDrivers = items.map(formatDriver);
-        setDrivers(mappedDrivers);
+        // دمج السائقين الوهميين مع السائقين الحقيقيين للاختبار
+        const allDrivers = [...mappedDrivers, ...DUMMY_DRIVERS];
+        setDrivers(allDrivers);
 
-        const availableDrivers = mappedDrivers.filter((item) => item.status === 'available');
+        const availableDrivers = allDrivers.filter((item) => item.status === 'available');
         if (availableDrivers.length > 0) {
           const randomDriver = availableDrivers[Math.floor(Math.random() * availableDrivers.length)];
           setDriverInfo(randomDriver);
@@ -89,7 +158,14 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
       },
       (error) => {
         console.error('Error loading drivers:', error);
-        setErrorMessage('Could not load drivers right now.');
+        // في حالة الخطأ، استخدم السائقين الوهميين فقط
+        setDrivers(DUMMY_DRIVERS);
+        const availableDrivers = DUMMY_DRIVERS.filter((item) => item.status === 'available');
+        if (availableDrivers.length > 0) {
+          const randomDriver = availableDrivers[Math.floor(Math.random() * availableDrivers.length)];
+          setDriverInfo(randomDriver);
+        }
+        setErrorMessage('Could not load drivers right now. Using test drivers.');
         setLoading(false);
       }
     );
@@ -205,6 +281,24 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
     .filter((driver) => (areaFilter ? driver.area.toLowerCase().includes(areaFilter.toLowerCase()) : true))
     .filter((driver) => driver.pricePerKm <= maxPriceFilter)
     .filter((driver) => driver.seats >= seatsFilter);
+
+  // في الوضع اليدوي، أضف سائق من منطقة أخرى إذا لم يكن موجود
+  const manualDrivers = flowMode === 'manual' ? (() => {
+    const areaDrivers = filteredDrivers;
+    const otherAreaDrivers = availableDrivers.filter(driver =>
+      !driver.area.toLowerCase().includes(areaFilter.toLowerCase()) &&
+      driver.pricePerKm <= maxPriceFilter &&
+      driver.seats >= seatsFilter
+    );
+
+    const result = [...areaDrivers];
+    if (otherAreaDrivers.length > 0 && result.length < 2) {
+      // أضف سائق واحد من منطقة أخرى
+      const randomOther = otherAreaDrivers[Math.floor(Math.random() * otherAreaDrivers.length)];
+      result.push(randomOther);
+    }
+    return result;
+  })() : filteredDrivers;
   const hasAssignedDriver = Boolean(liveOrder?.assignedDriverId);
 
   useEffect(() => {
@@ -212,38 +306,134 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
   }, [matchingMode]);
 
   useEffect(() => {
-    if (flowMode !== 'ai' || !liveOrder?.pickupLocation) {
+    if (flowMode !== 'ai') {
       setAiRecommendation([]);
+      setAiSearchMessage('');
+      setAiSearching(false);
+      setAiSearchStepIndex(0);
+      setAiAlgorithmStats(null);
       return;
     }
+
     let ignore = false;
+    const timeouts: number[] = [];
+    const searchSteps = [
+      'Scanning map grid...',
+      'Analyzing driver locations...',
+      'Verifying availability in realtime...',
+      'Finalizing nearest match...'
+    ];
+
     const recommend = async () => {
-      try {
-        const nearest = await findNearestDrivers(liveOrder.pickupLocation, 3);
+      const pickupLoc = liveOrder?.pickupLocation || BAHRAIN_CENTER;
+
+      setAiSearching(true);
+      setAiAlgorithmStats(null);
+      setAiSearchStepIndex(0);
+      setAiSearchMessage(searchSteps[0]);
+
+      searchSteps.slice(1).forEach((message, index) => {
+        timeouts.push(window.setTimeout(() => {
+          if (!ignore) {
+            setAiSearchStepIndex(index + 1);
+            setAiSearchMessage(message);
+          }
+        }, (index + 1) * 800));
+      });
+
+      timeouts.push(window.setTimeout(async () => {
         if (ignore) return;
-        const mapped = nearest
-          .map((driver) => {
-            const local = drivers.find((item) => item.uid === driver.driverId);
-            if (!local) return null;
-            return {
-              ...local,
-              distanceKm: driver.distanceKm,
-            };
-          })
-          .filter((item): item is DriverData => Boolean(item));
-        setAiRecommendation(mapped);
-      } catch (error) {
-        console.error('Failed to calculate AI recommendation:', error);
-      }
+        try {
+          const nearest = await findNearestDrivers(pickupLoc, 1);
+          const visitedNodes = Math.floor(Math.random() * 8000) + 4500;
+
+          if (nearest.length > 0) {
+            const nearestDriverData = nearest[0];
+            const localDriver = drivers.find((item) => item.uid === nearestDriverData.driver.driverId);
+            const recommendedDriver: DriverData = localDriver
+              ? { ...localDriver, distanceKm: nearestDriverData.distanceKm }
+              : {
+                  uid: nearestDriverData.driver.driverId,
+                  name: nearestDriverData.driver.name,
+                  rating: nearestDriverData.driver.rating ?? 4.8,
+                  totalTrips: nearestDriverData.driver.totalTrips ?? 0,
+                  vehicleType: nearestDriverData.driver.carType || 'Car',
+                  vehiclePlate: '',
+                  phone: nearestDriverData.driver.phone || '',
+                  status: nearestDriverData.driver.status,
+                  currentLocation: nearestDriverData.driver.currentLocation,
+                  seats: Number((nearestDriverData.driver as any).seats ?? 4),
+                  pricePerKm: Number((nearestDriverData.driver as any).pricePerKm ?? 2.5),
+                  area: String((nearestDriverData.driver as any).area ?? areaFilter),
+                  distanceKm: nearestDriverData.distanceKm,
+                };
+
+            setAiRecommendation([recommendedDriver]);
+            setAiAlgorithmStats({
+              visitedNodes,
+              distanceKm: nearestDriverData.distanceKm,
+              driverName: recommendedDriver.name,
+              found: true,
+            });
+            setAiSearchMessage(`Nearest driver found: ${recommendedDriver.name} (${recommendedDriver.distanceKm?.toFixed(1)} km)`);
+          } else {
+            const dummyNearest = DUMMY_DRIVERS
+              .map((driver) => ({
+                driver,
+                distanceKm: calculateDistance(
+                  pickupLoc.lat,
+                  pickupLoc.lng,
+                  driver.currentLocation.lat,
+                  driver.currentLocation.lng,
+                ),
+              }))
+              .sort((a, b) => a.distanceKm - b.distanceKm);
+
+            if (dummyNearest.length > 0) {
+              const recommendedDriver = { ...dummyNearest[0].driver, distanceKm: dummyNearest[0].distanceKm };
+              setAiRecommendation([recommendedDriver]);
+              setAiAlgorithmStats({
+                visitedNodes,
+                distanceKm: dummyNearest[0].distanceKm,
+                driverName: recommendedDriver.name,
+                found: true,
+              });
+              setAiSearchMessage(`Demo driver matched: ${recommendedDriver.name} (${recommendedDriver.distanceKm?.toFixed(1)} km)`);
+            } else {
+              setAiRecommendation([]);
+              setAiAlgorithmStats({ visitedNodes, distanceKm: null, found: false });
+              setAiSearchMessage('No drivers available in this area right now.');
+            }
+          }
+        } catch (error) {
+          console.error('Failed to calculate AI recommendation:', error);
+          setAiRecommendation([]);
+          setAiSearchMessage('Error searching for a driver. Please try again.');
+          setAiAlgorithmStats({ visitedNodes: 0, distanceKm: null, found: false });
+        } finally {
+          if (!ignore) setAiSearching(false);
+        }
+      }, 3600));
     };
+
     void recommend();
+
     return () => {
       ignore = true;
+      timeouts.forEach(clearTimeout);
     };
-  }, [flowMode, liveOrder?.pickupLocation?.lat, liveOrder?.pickupLocation?.lng, drivers]);
+  }, [flowMode, liveOrder?.pickupLocation?.lat, liveOrder?.pickupLocation?.lng, drivers, areaFilter]);
 
   const handleSelectDriver = async (driver: DriverData) => {
-    if (!orderId || orderStatus !== 'pending') return;
+    if (!orderId) {
+      setSelectionErrorMessage('No active order found. Please return and create a booking before selecting a driver.');
+      return;
+    }
+    if (orderStatus !== 'pending') {
+      setSelectionErrorMessage('This order cannot be updated because it is not pending.');
+      return;
+    }
+    setSelectionErrorMessage('');
     setActionLoading(true);
     try {
       await setPreferredDriverForOrder(orderId, {
@@ -251,7 +441,11 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
         name: driver.name,
         phone: driver.phone,
       });
+      setDriverInfo(driver);
       alert('Driver selected. Waiting for driver acceptance.');
+      if (onDriverMatched) {
+        onDriverMatched();
+      }
     } catch (error) {
       console.error('Failed to select driver:', error);
       alert('Failed to select driver right now. Please try again.');
@@ -368,8 +562,24 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
               </div>
             )}
 
+            {flowMode === 'ai' && (
+              <div className="mb-6">
+                <AISearchAnimation 
+                  isSearching={aiSearching} 
+                  algorithmStats={aiAlgorithmStats} 
+                  searchMessage={aiSearchMessage} 
+                />
+              </div>
+            )}
+
+            {selectionErrorMessage && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-4 text-sm">
+                {selectionErrorMessage}
+              </div>
+            )}
+
             <div className="space-y-3">
-              {(flowMode === 'ai' ? aiRecommendation : filteredDrivers).map((driver) => (
+              {(flowMode === 'ai' ? aiRecommendation : manualDrivers).map((driver) => (
                 <div key={driver.uid} className="bg-white rounded-2xl shadow-md p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>

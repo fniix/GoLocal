@@ -52,7 +52,7 @@
 | `src/app/components/DriverMatchingScreen.tsx` | دراؤفرز من Firebase |
 | `src/app/components/driver-system/IncomingRequests.tsx` | طلبات حقيقية |
 | `src/app/components/admin-system/AdminUsers.tsx` | مستخدمون حقيقيون |
-| `src/app/components/admin-system/AdminDrivers.tsx` | دراؤفرز حقيقيون |
+| `src/app/components/admin-system/AdminDrivers.tsx` | درايفرز حقيقيون |
 
 ---
 

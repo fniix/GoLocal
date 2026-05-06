@@ -1,5 +1,6 @@
 import { Home, FileText, Inbox, Truck, DollarSign, Star, User, ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
+import { createOffer } from '../../../services/firebaseService';
 
 interface CreateDeliveryOfferProps {
   onBack: () => void;
@@ -36,16 +37,30 @@ export function CreateDeliveryOffer({
   const serviceTypes = ['Private Driver', 'Private Bus', 'OnTheWay', 'Mandoob'];
   const priceTypes = ['Fixed', 'Per KM', 'Negotiable'];
 
-  const handlePublishOffer = () => {
+  const handlePublishOffer = async () => {
     // Validate all fields are filled
     if (!fromCity || !fromArea || !toCity || !toArea || !serviceType || !priceType || !basePrice || !availableTime) {
       alert('Please fill all fields');
       return;
     }
 
-    // In a real app, this would send data to backend
-    alert('Offer Published Successfully!');
-    onNavigateToMyOffers();
+    try {
+      await createOffer({
+        fromCity,
+        fromArea,
+        toCity,
+        toArea,
+        serviceType,
+        priceType,
+        basePrice,
+        availableTime
+      });
+      alert('Offer Published Successfully!');
+      onNavigateToMyOffers();
+    } catch (error) {
+      console.error("Failed to publish offer:", error);
+      alert('Failed to publish offer. Please try again.');
+    }
   };
 
   return (
