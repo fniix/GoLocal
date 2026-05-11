@@ -1,5 +1,6 @@
-import { Home, FileText, Inbox, Truck, DollarSign, Star, User, TrendingUp, Calendar } from 'lucide-react';
+import { DollarSign, Truck, TrendingUp, Calendar } from 'lucide-react';
 import { useState } from 'react';
+import { DriverSidebar } from './DriverSidebar';
 
 interface EarningsProps {
   onNavigateToDashboard: () => void;
@@ -73,92 +74,17 @@ export function Earnings({
   };
 
   return (
-    <div className="size-full flex bg-slate-50 text-slate-900 transition-colors duration-300">
-      {/* Fixed Left Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-purple-600 to-blue-600 text-white flex-shrink-0 flex flex-col">
-        {/* Logo */}
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg overflow-hidden">
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg">Driver System</h2>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation Menu */}
-        <nav className="flex-1 py-6 overflow-y-auto">
-          <button 
-            onClick={onNavigateToDashboard}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Home className="w-5 h-5" />
-            Dashboard
-          </button>
-          
-          <button 
-            onClick={onNavigateToMyOffers}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <FileText className="w-5 h-5" />
-            My Offers
-          </button>
-          
-          <button 
-            onClick={onNavigateToIncomingRequests}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Inbox className="w-5 h-5" />
-            Incoming Requests
-            <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">3</span>
-          </button>
-          
-          <button 
-            onClick={onNavigateToActiveDeliveries}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Truck className="w-5 h-5" />
-            Active Deliveries
-            <span className="ml-auto bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">2</span>
-          </button>
-          
-          <button className="w-full px-6 py-3 flex items-center gap-3 bg-white/10 border-l-4 border-white text-white font-semibold">
-            <DollarSign className="w-5 h-5" />
-            Earnings
-          </button>
-          
-          <button 
-            onClick={onNavigateToReviews}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Star className="w-5 h-5" />
-            Reviews
-          </button>
-          
-          <button 
-            onClick={onNavigateToProfile}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <User className="w-5 h-5" />
-            Profile
-          </button>
-        </nav>
-
-        {/* Footer */}
-        <div className="p-6 border-t border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <User className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">Driver</p>
-              <p className="text-xs text-white/70">Ahmed Al-Khalifa</p>
-            </div>
-          </div>
-        </div>
-      </aside>
+    <div className="size-full flex bg-slate-50 text-slate-900">
+      <DriverSidebar
+        activePage="earnings"
+        onNavigateToDashboard={onNavigateToDashboard}
+        onNavigateToMyOffers={onNavigateToMyOffers}
+        onNavigateToIncomingRequests={onNavigateToIncomingRequests}
+        onNavigateToActiveDeliveries={onNavigateToActiveDeliveries}
+        onNavigateToEarnings={() => {}}
+        onNavigateToReviews={onNavigateToReviews}
+        onNavigateToProfile={onNavigateToProfile}
+      />
 
       <main className="flex-1 overflow-y-auto">
         {/* Header */}

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../../firebase";
 import { createDriverProfile, createUserProfile } from "../../services/firebaseService";
+import Waves from './ui/Waves';
 
 interface RegisterScreenWithRolesProps {
   onBack: () => void;
@@ -278,9 +279,10 @@ export function RegisterScreenWithRoles({
       await createDriverProfile({
         driverId: cred.user.uid,
         name: nameValue,
+        email: emailValue,
         phone: phoneNumber,
         carType: vehicleTypeValue,
-        status: "offline",
+        area: cityValue,
       });
 
       alert("Your application has been submitted successfully. It will be reviewed by GoLocal administration.");
@@ -390,7 +392,28 @@ export function RegisterScreenWithRoles({
   };
 
   return (
-    <div className="size-full bg-gradient-to-b from-purple-600 to-blue-500 flex flex-col">
+    <div className="size-full bg-[#0a0a0c] flex flex-col relative overflow-hidden">
+      {/* Interactive Waves Background */}
+      <div className="absolute inset-0 z-0">
+        <Waves
+          lineColor="rgba(139, 92, 246, 0.3)"
+          backgroundColor="transparent"
+          waveSpeedX={0.01}
+          waveSpeedY={0.005}
+          waveAmpX={50}
+          waveAmpY={30}
+          friction={0.9}
+          tension={0.01}
+          maxCursorMove={120}
+          xGap={12}
+          yGap={36}
+        />
+      </div>
+
+      {/* Decorative Gradient Overlay */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-tr from-purple-900/20 via-transparent to-blue-900/20 pointer-events-none" />
+
+      <div className="relative z-10 flex flex-col size-full">
       {/* Header with Back Button */}
       <div className="p-4">
         <button 
@@ -403,7 +426,7 @@ export function RegisterScreenWithRoles({
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto px-6 pb-24">
-        <div className="w-full max-w-md mx-auto bg-white rounded-3xl shadow-2xl p-8 my-6">
+        <div className="w-full max-w-md mx-auto bg-white/95 backdrop-blur-md rounded-[2.5rem] shadow-2xl p-8 my-6 border border-white/20">
           {/* Logo */}
           <div className="flex justify-center mb-6">
             <div className="w-20 h-20 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center shadow-lg">
@@ -605,20 +628,20 @@ export function RegisterScreenWithRoles({
               className={`w-full px-4 py-3 border ${errors.city ? 'border-red-500' : 'border-gray-300'} rounded-xl focus:outline-none focus:ring-2 ${errors.city ? 'focus:ring-red-500' : 'focus:ring-purple-500'} focus:border-transparent transition-all bg-white`}
             >
               <option value="">Select your city</option>
-              <option value="manama">Manama</option>
-              <option value="muharraq">Muharraq</option>
-              <option value="riffa">Riffa</option>
-              <option value="hamad-town">Hamad Town</option>
-              <option value="isa-town">Isa Town</option>
-              <option value="sitra">Sitra</option>
-              <option value="budaiya">Budaiya</option>
-              <option value="jidhafs">Jidhafs</option>
-              <option value="sanabis">Sanabis</option>
-              <option value="tubli">Tubli</option>
-              <option value="adliya">Adliya</option>
-              <option value="seef">Seef</option>
-              <option value="amwaj">Amwaj Islands</option>
-              <option value="durrat-al-bahrain">Durrat Al Bahrain</option>
+              <option value="Manama">Manama</option>
+              <option value="Muharraq">Muharraq</option>
+              <option value="Riffa">Riffa</option>
+              <option value="Hamad Town">Hamad Town</option>
+              <option value="Isa Town">Isa Town</option>
+              <option value="Sitra">Sitra</option>
+              <option value="Budaiya">Budaiya</option>
+              <option value="Jidhafs">Jidhafs</option>
+              <option value="Sanabis">Sanabis</option>
+              <option value="Tubli">Tubli</option>
+              <option value="Adliya">Adliya</option>
+              <option value="Seef">Seef</option>
+              <option value="Amwaj Islands">Amwaj Islands</option>
+              <option value="Durrat Al Bahrain">Durrat Al Bahrain</option>
             </select>
             {errors.city && (
               <p className="text-red-500 text-xs mt-1">{errors.city}</p>
@@ -857,5 +880,6 @@ export function RegisterScreenWithRoles({
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 }

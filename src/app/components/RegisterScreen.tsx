@@ -1,5 +1,6 @@
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useState } from 'react';
+import Orb from './ui/Orb';
 
 interface RegisterScreenProps {
   onBack: () => void;
@@ -171,20 +172,32 @@ export function RegisterScreen({ onBack, onLogin, onRegister, onNavigateHome, on
   };
 
   return (
-    <div className="size-full bg-gradient-to-b from-purple-600 to-blue-500 flex flex-col">
-      {/* Header with Back Button */}
-      <div className="p-4">
-        <button 
-          onClick={onBack}
-          className="flex items-center text-white hover:bg-white/10 rounded-full p-2 transition-colors"
-        >
-          <ArrowLeft className="w-6 h-6" />
-        </button>
+    <div className="size-full bg-black flex flex-col relative overflow-hidden">
+      {/* Dynamic Orb Background */}
+      <div className="absolute inset-0 pointer-events-none opacity-60">
+        <Orb 
+          hoverIntensity={0.5} 
+          rotateOnHover={true} 
+          hue={200} 
+          forceHoverState={true}
+          backgroundColor="#000000"
+        />
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-6 pb-24">
-        <div className="w-full max-w-md mx-auto bg-white rounded-3xl shadow-2xl p-8 my-6">
+      <div className="relative z-10 flex flex-col size-full overflow-y-auto">
+        {/* Header with Back Button */}
+        <div className="p-4">
+          <button 
+            onClick={onBack}
+            className="flex items-center text-white hover:bg-white/10 rounded-full p-2 transition-colors"
+          >
+            <ArrowLeft className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 px-6 pb-24">
+          <div className="w-full max-w-md mx-auto bg-white/95 backdrop-blur-md rounded-[2.5rem] shadow-2xl p-8 my-6 border border-white/20">
           {/* Logo */}
           <div className="flex justify-center mb-6">
             <div className="w-20 h-20 rounded-full bg-gradient-to-r from-purple-600 to-blue-500 flex items-center justify-center shadow-lg">
@@ -385,5 +398,6 @@ export function RegisterScreen({ onBack, onLogin, onRegister, onNavigateHome, on
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 }

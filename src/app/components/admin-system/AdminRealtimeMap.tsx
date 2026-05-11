@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { listenForAllDrivers, listenForAllOrders, listenForAllUsers } from '../../../services/firebaseService';
-import { BAHRAIN_CENTER, initializeMap } from '../../../services/googleMapsService';
+import { BAHRAIN_CENTER, initializeMap, createMarker, animateMarker } from '../../../services/googleMapsService';
 
 export function AdminRealtimeMap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -29,21 +29,18 @@ export function AdminRealtimeMap() {
             const markerPos = { lat: 26.04 + index * 0.002, lng: 50.53 + index * 0.002 };
             const existing = userMarkersRef.current.get(user.uid);
             if (existing) {
-              existing.setPosition(markerPos);
+              animateMarker(existing, markerPos);
               return;
             }
-            const marker = new window.google.maps.Marker({
-              map,
-              position: markerPos,
-              title: `User: ${user.name}`,
-              icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
-            });
+            const marker = createMarker('#3b82f6', markerPos); // blue
+            marker.bindTooltip(`User: ${user.name}`);
+            marker.addTo(map);
             userMarkersRef.current.set(user.uid, marker);
           });
 
           userMarkersRef.current.forEach((marker, id) => {
             if (!activeIds.has(id)) {
-              marker.setMap(null);
+              map.removeLayer(marker);
               userMarkersRef.current.delete(id);
             }
           });
@@ -56,24 +53,19 @@ export function AdminRealtimeMap() {
             const existing = driverMarkersRef.current.get(driver.driverId);
             const markerPos = driver.currentLocation || BAHRAIN_CENTER;
             if (existing) {
-              existing.setPosition(markerPos);
+              animateMarker(existing, markerPos);
               return;
             }
-            const marker = new window.google.maps.Marker({
-              map,
-              position: markerPos,
-              title: `Driver: ${driver.name} (${driver.status})`,
-              icon:
-                driver.status === 'available'
-                  ? "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
-                  : "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png",
-            });
+            const color = driver.status === 'available' ? '#22c55e' : '#eab308'; // green or yellow
+            const marker = createMarker(color, markerPos);
+            marker.bindTooltip(`Driver: ${driver.name} (${driver.status})`);
+            marker.addTo(map);
             driverMarkersRef.current.set(driver.driverId, marker);
           });
 
           driverMarkersRef.current.forEach((marker, id) => {
             if (!activeIds.has(id)) {
-              marker.setMap(null);
+              map.removeLayer(marker);
               driverMarkersRef.current.delete(id);
             }
           });
@@ -87,21 +79,18 @@ export function AdminRealtimeMap() {
             const existing = orderMarkersRef.current.get(order.orderId);
             const markerPos = order.pickupLocation || BAHRAIN_CENTER;
             if (existing) {
-              existing.setPosition(markerPos);
+              animateMarker(existing, markerPos);
               return;
             }
-            const marker = new window.google.maps.Marker({
-              map,
-              position: markerPos,
-              title: `Order: ${order.userName} (${order.status})`,
-              icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
-            });
+            const marker = createMarker('#ef4444', markerPos); // red
+            marker.bindTooltip(`Order: ${order.userName} (${order.status})`);
+            marker.addTo(map);
             orderMarkersRef.current.set(order.orderId, marker);
           });
 
           orderMarkersRef.current.forEach((marker, id) => {
             if (!activeIds.has(id)) {
-              marker.setMap(null);
+              map.removeLayer(marker);
               orderMarkersRef.current.delete(id);
             }
           });
@@ -120,9 +109,11 @@ export function AdminRealtimeMap() {
       if (unUsers) unUsers();
       if (unDrivers) unDrivers();
       if (unOrders) unOrders();
-      userMarkersRef.current.forEach((marker) => marker.setMap(null));
-      driverMarkersRef.current.forEach((marker) => marker.setMap(null));
-      orderMarkersRef.current.forEach((marker) => marker.setMap(null));
+      if (mapRef.current) {
+        userMarkersRef.current.forEach((marker) => mapRef.current.removeLayer(marker));
+        driverMarkersRef.current.forEach((marker) => mapRef.current.removeLayer(marker));
+        orderMarkersRef.current.forEach((marker) => mapRef.current.removeLayer(marker));
+      }
       userMarkersRef.current.clear();
       driverMarkersRef.current.clear();
       orderMarkersRef.current.clear();

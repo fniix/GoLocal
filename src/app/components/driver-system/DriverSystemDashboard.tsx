@@ -1,12 +1,17 @@
-import { Home, FileText, Inbox, Truck, DollarSign, Star, User, Lock, TrendingUp, CreditCard, BarChart3 } from 'lucide-react';
+import { Home, FileText, Inbox, Truck, DollarSign, Star, User, Lock, TrendingUp, CreditCard, BarChart3, ChevronLeft, ChevronRight, LogOut, MapPin, Check, Navigation } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { auth } from '../../../firebase';
+import { auth, db } from '../../../firebase';
+import { signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import {
   listenForDriverOrders,
   listenForPendingOrders,
-  listenToDrivers,
+  listenForAllDrivers,
+  listenForAssignedPendingOrders,
   listenToUserProfile,
   updateDriverStatus,
+  updateTripStatus,
+  recordPayment,
 } from '../../../services/firebaseService';
 import {
   enableDemoSafeMode,
@@ -14,6 +19,7 @@ import {
   startDriverLocationUpdates,
   stopDemoMovement,
 } from '../../../services/googleMapsService';
+import { Footer } from '../Footer';
 
 interface DriverSystemDashboardProps {
   onNavigateToCreateOffer: () => void;
@@ -34,7 +40,9 @@ export function DriverSystemDashboard({
   onNavigateToReviews,
   onNavigateToProfile,
 }: DriverSystemDashboardProps) {
-  const [driverStatus, setDriverStatus] = useState<'available' | 'busy' | 'offline'>('available');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [driverStatus, setDriverStatus] = useState<'available' | 'busy' | 'offline' | 'pending' | 'approved'>('offline');
+  const [approvalStatus, setApprovalStatus] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [driverName, setDriverName] = useState('Driver');
   const [rating, setRating] = useState(0);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
@@ -48,6 +56,7 @@ export function DriverSystemDashboard({
     dropoff: { lat: number; lng: number };
   } | null>(null);
   const [demoRunning, setDemoRunning] = useState(false);
+  const [newDirectRequest, setNewDirectRequest] = useState<any | null>(null);
 
   const userId = auth.currentUser?.uid || '';
 
@@ -59,10 +68,11 @@ export function DriverSystemDashboard({
       setDriverName(profile.name || 'Driver');
     });
 
-    const unDrivers = listenToDrivers((drivers) => {
+    const unDrivers = listenForAllDrivers((drivers) => {
       const me = drivers.find((driver) => driver.driverId === userId);
       if (me) {
-        setDriverStatus(me.status);
+        setDriverStatus(me.status as any);
+        setApprovalStatus((me.status === 'pending' || me.status === 'approved') ? (me.status as any) : 'approved');
         setRating(me.rating || 0);
       }
     });
@@ -82,37 +92,57 @@ export function DriverSystemDashboard({
     });
 
     const unAssigned = listenForDriverOrders(userId, (orders) => {
-      const active = orders.filter((order) => order.status === 'accepted').length;
-      const completed = orders.filter((order) => order.status === 'completed').length;
-      setActiveDeliveriesCount(active);
-      setCompletedCount(completed);
-      setTodayEarnings(completed * 2.5);
+      try {
+        const active = orders.filter((order) => order.status === 'accepted').length;
+        const completed = orders.filter((order) => order.status === 'completed').length;
+        setActiveDeliveriesCount(active);
+        setCompletedCount(completed);
+        setTodayEarnings(completed * 2.5);
 
-      const assignedActivities = orders.slice(0, 4).map((order) => ({
-        action:
-          order.status === 'completed'
-            ? 'Delivery completed'
-            : order.status === 'accepted'
-            ? 'Trip assigned'
-            : 'Order update',
-        route: `${order.pickupAddress || 'Pickup'} -> ${order.dropoffAddress || 'Dropoff'}`,
-        time: 'Live',
-        type: order.status === 'completed' ? ('completed' as const) : ('offer' as const),
-      }));
-      if (assignedActivities.length > 0) {
-        setRecentActivities(assignedActivities);
-      }
+        const assignedActivities = orders.slice(0, 4).map((order) => ({
+          action:
+            order.status === 'completed'
+              ? 'Delivery completed'
+              : order.status === 'accepted'
+              ? 'Trip assigned'
+              : 'Order update',
+          route: `${order.pickupAddress || 'Pickup'} -> ${order.dropoffAddress || 'Dropoff'}`,
+          time: 'Live',
+          type: order.status === 'completed' ? ('completed' as const) : ('offer' as const),
+        }));
+        if (assignedActivities.length > 0) {
+          setRecentActivities(assignedActivities);
+        }
 
-      const firstActive = orders.find((order) => order.status === 'accepted');
-      if (firstActive) {
-        setActiveOrderForDemo({
-          orderId: firstActive.orderId,
-          pickup: firstActive.pickupLocation,
-          dropoff: firstActive.dropoffLocation,
-        });
-      } else {
-        setActiveOrderForDemo(null);
+        const firstActive = orders.find((order) => order.status === 'accepted');
+        if (firstActive) {
+          setActiveOrderForDemo({
+            orderId: firstActive.orderId,
+            pickup: firstActive.pickupLocation || { lat: 0, lng: 0 },
+            dropoff: firstActive.dropoffLocation || { lat: 0, lng: 0 },
+          });
+        } else {
+          setActiveOrderForDemo(null);
+        }
+      } catch (err) {
+        console.error('DriverDashboard: Error processing orders:', err);
       }
+    }, (error) => {
+      console.error('DriverDashboard: listenForDriverOrders error:', error);
+    });
+
+    const unPrivate = listenForAssignedPendingOrders(userId, (orders) => {
+      try {
+        if (orders && orders.length > 0) {
+          setNewDirectRequest(orders[0]);
+        } else {
+          setNewDirectRequest(null);
+        }
+      } catch (err) {
+        console.error('DriverDashboard: Error processing assigned orders:', err);
+      }
+    }, (error) => {
+      console.error('DriverDashboard: listenForAssignedPendingOrders error:', error);
     });
 
     return () => {
@@ -120,6 +150,7 @@ export function DriverSystemDashboard({
       unDrivers();
       unPending();
       unAssigned();
+      unPrivate();
     };
   }, [userId]);
 
@@ -129,6 +160,40 @@ export function DriverSystemDashboard({
     const stopUpdates = startDriverLocationUpdates(userId, { intervalMs: 5000 });
     return () => stopUpdates();
   }, [userId, driverStatus]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const checkDriverDoc = async () => {
+      const docRef = doc(db, "drivers", userId);
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) {
+        console.warn("Driver document MISSING in 'drivers' collection!");
+        // attempt to auto-create if missing
+        try {
+          const userSnap = await getDoc(doc(db, "users", userId));
+          if (userSnap.exists()) {
+            const userData = userSnap.data();
+            await setDoc(docRef, {
+              driverId: userId,
+              name: userData.name || "Driver",
+              phone: userData.phone || "",
+              carType: userData.vehicleType || "sedan",
+              area: userData.city || "amwaj",
+              status: "available",
+              currentLocation: { lat: 26.2235, lng: 50.5876 },
+              rating: 5,
+              totalTrips: 0,
+              createdAt: serverTimestamp()
+            });
+            alert("Fixed! Your driver profile was missing in the 'drivers' collection and has been recreated. Please refresh the passenger app.");
+          }
+        } catch (e) {
+          console.error("Auto-fix failed", e);
+        }
+      }
+    };
+    checkDriverDoc();
+  }, [userId]);
 
   useEffect(() => {
     return () => {
@@ -143,6 +208,10 @@ export function DriverSystemDashboard({
   }, [completedCount, activeDeliveriesCount]);
 
   const handleStatusChange = async (nextStatus: 'available' | 'busy' | 'offline') => {
+    if (approvalStatus === 'pending') {
+      alert("Your account is still pending approval. You cannot go online yet.");
+      return;
+    }
     setDriverStatus(nextStatus);
     if (!userId) return;
     try {
@@ -179,103 +248,162 @@ export function DriverSystemDashboard({
 
   return (
     <div className="size-full flex bg-slate-50 text-slate-900 transition-colors duration-300">
-      {/* Fixed Left Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-purple-600 to-blue-600 text-white flex-shrink-0 flex flex-col">
+      {/* Collapsible Left Sidebar */}
+      <aside
+        className={`bg-gradient-to-b from-purple-600 to-blue-600 text-white flex-shrink-0 flex flex-col relative transition-all duration-300 ease-in-out ${
+          sidebarCollapsed ? 'w-[72px]' : 'w-64'
+        }`}
+      >
+        {/* Toggle Button */}
+        <button
+          onClick={() => setSidebarCollapsed(prev => !prev)}
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="absolute -right-4 top-8 z-20 w-8 h-8 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center text-purple-600 hover:text-purple-800 hover:shadow-lg transition-all duration-200"
+        >
+          {sidebarCollapsed
+            ? <ChevronRight className="w-4 h-4" />
+            : <ChevronLeft className="w-4 h-4" />
+          }
+        </button>
+
         {/* Logo */}
-        <div className="p-6 border-b border-white/10">
+        <div className="p-4 border-b border-white/10 overflow-hidden">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg overflow-hidden">
+            <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
               <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
             </div>
-            <div>
-              <h2 className="font-bold text-lg">Driver System</h2>
-            </div>
+            {!sidebarCollapsed && (
+              <h2 className="font-bold text-lg whitespace-nowrap">Driver System</h2>
+            )}
           </div>
         </div>
 
         {/* Navigation Menu */}
-        <nav className="flex-1 py-6 overflow-y-auto">
-          <button className="w-full px-6 py-3 flex items-center gap-3 bg-white/10 border-l-4 border-white text-white font-semibold">
-            <Home className="w-5 h-5" />
-            Dashboard
-          </button>
-          
-          <button 
-            onClick={onNavigateToMyOffers}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <FileText className="w-5 h-5" />
-            My Offers
-          </button>
-          
-          <button 
-            onClick={onNavigateToIncomingRequests}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Inbox className="w-5 h-5" />
-            Incoming Requests
-            {pendingRequestsCount > 0 && (
-              <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingRequestsCount}</span>
-            )}
-          </button>
-          
-          <button 
-            onClick={onNavigateToActiveDeliveries}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Truck className="w-5 h-5" />
-            Active Deliveries
-            {activeDeliveriesCount > 0 && (
-              <span className="ml-auto bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">{activeDeliveriesCount}</span>
-            )}
-          </button>
-          
-          <button 
-            onClick={onNavigateToEarnings}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <DollarSign className="w-5 h-5" />
-            Earnings
-          </button>
-          
-          <button 
-            onClick={onNavigateToReviews}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Star className="w-5 h-5" />
-            Reviews
-          </button>
-          
-          <button 
-            onClick={onNavigateToProfile}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <User className="w-5 h-5" />
-            Profile
-          </button>
+        <nav className="flex-1 py-6 overflow-y-auto overflow-x-hidden">
+          {[
+            { label: 'Dashboard', icon: Home, onClick: undefined, active: true, badge: 0 },
+            { label: 'My Offers', icon: FileText, onClick: onNavigateToMyOffers, active: false, badge: 0 },
+            { label: 'Incoming', icon: Inbox, onClick: onNavigateToIncomingRequests, active: false, badge: pendingRequestsCount },
+            { label: 'Active Deliveries', icon: Truck, onClick: onNavigateToActiveDeliveries, active: false, badge: activeDeliveriesCount },
+            { label: 'Earnings', icon: DollarSign, onClick: onNavigateToEarnings, active: false, badge: 0 },
+            { label: 'Reviews', icon: Star, onClick: onNavigateToReviews, active: false, badge: 0 },
+            { label: 'Profile', icon: User, onClick: onNavigateToProfile, active: false, badge: 0 },
+          ].map((item) => (
+            <button
+              key={item.label}
+              onClick={item.onClick}
+              title={sidebarCollapsed ? item.label : undefined}
+              className={`w-full py-3 flex items-center transition-all duration-200 relative group ${
+                sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-6'
+              } ${
+                item.active
+                  ? 'bg-white/10 border-l-4 border-white font-semibold'
+                  : 'hover:bg-white/10 text-white/90 hover:text-white'
+              }`}
+            >
+              <item.icon className="w-5 h-5 flex-shrink-0" />
+              {!sidebarCollapsed && (
+                <>
+                  <span className="whitespace-nowrap">{item.label}</span>
+                  {item.badge > 0 && (
+                    <span className={`ml-auto text-white text-xs px-2 py-0.5 rounded-full ${
+                      item.label === 'Incoming' ? 'bg-red-500' : 'bg-green-500'
+                    }`}>{item.badge}</span>
+                  )}
+                </>
+              )}
+              {/* Badge dot when collapsed */}
+              {sidebarCollapsed && item.badge > 0 && (
+                <span className="absolute top-2 right-2 w-2 h-2 bg-red-400 rounded-full" />
+              )}
+              {/* Tooltip when collapsed */}
+              {sidebarCollapsed && (
+                <div className="absolute left-full ml-3 px-3 py-1.5 bg-slate-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50 shadow-lg">
+                  {item.label}
+                  {item.badge > 0 && (
+                    <span className="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>
+                  )}
+                </div>
+              )}
+            </button>
+          ))}
         </nav>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <User className="w-5 h-5 text-white" />
+        {/* Footer — Profile + Logout */}
+        {!sidebarCollapsed ? (
+          <div className="p-4 border-t border-white/10 space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                <User className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm">Driver</p>
+                <p className="text-xs text-white/70 truncate">{driverName}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => signOut(auth).catch(console.error)}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/25 text-red-300 hover:text-red-200 transition-all duration-200 border border-red-400/20"
+            >
+              <LogOut className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm font-semibold">Logout</span>
+            </button>
+          </div>
+        ) : (
+          <div className="p-3 border-t border-white/10 flex flex-col items-center gap-2">
+            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
+              <User className="w-4 h-4 text-white" />
+            </div>
+            <button
+              onClick={() => signOut(auth).catch(console.error)}
+              title="Logout"
+              className="relative group w-9 h-9 rounded-xl bg-red-500/15 hover:bg-red-500/30 flex items-center justify-center transition-all duration-200"
+            >
+              <LogOut className="w-4 h-4 text-red-300" />
+              <div className="absolute left-full ml-3 px-3 py-1.5 bg-slate-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50 shadow-lg">
+                Logout
+              </div>
+            </button>
+          </div>
+        )}
+      </aside>
+
+      {newDirectRequest && (
+        <div className="fixed bottom-24 right-8 bg-white border-2 border-purple-500 rounded-2xl shadow-2xl p-6 z-[100] animate-bounce max-w-sm">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+              <Star className="w-6 h-6 text-purple-600 fill-purple-600" />
             </div>
             <div>
-              <p className="font-semibold text-sm">Driver</p>
-              <p className="text-xs text-white/70">{driverName}</p>
+              <h3 className="font-bold text-lg text-slate-900">New Direct Request!</h3>
+              <p className="text-sm text-slate-500">{newDirectRequest.userName} picked you specifically.</p>
             </div>
           </div>
+          <button 
+            onClick={onNavigateToIncomingRequests}
+            className="w-full py-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-colors"
+          >
+            View Request
+          </button>
         </div>
-      </aside>
+      )}
 
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
         <header className="bg-white border-b border-slate-200 px-8 py-6 sticky top-0 z-10 shadow-sm">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">Welcome, {driverName}</h1>
-              <p className="text-slate-500 mt-1">Manage your deliveries and earnings</p>
+            <div className="flex items-center gap-6">
+              <div>
+                <h1 className="text-3xl font-bold text-slate-900">Welcome, {driverName}</h1>
+                <p className="text-slate-500 mt-1">Manage your deliveries and earnings</p>
+              </div>
+
+              {approvalStatus === 'pending' && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-2 rounded-xl flex items-center gap-2 animate-pulse">
+                  <Lock className="w-5 h-5" />
+                  <span className="font-semibold text-sm">Account Pending Approval</span>
+                </div>
+              )}
             </div>
 
             {/* Status Toggle */}
@@ -316,6 +444,64 @@ export function DriverSystemDashboard({
 
         {/* Dashboard Content */}
         <div className="p-8">
+          {/* Active Trip Controls */}
+          {activeOrderForDemo && (
+            <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl p-8 mb-8 shadow-xl text-white">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold mb-1">Active Trip Management</h2>
+                  <p className="text-purple-100">Order ID: {activeOrderForDemo.orderId}</p>
+                </div>
+                <div className="bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm border border-white/30 animate-pulse">
+                  <span className="font-bold">LIVE TRACKING ACTIVE</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-6">
+                <button
+                  onClick={handleStartDemoMovement}
+                  disabled={demoRunning}
+                  className="bg-white text-purple-700 px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-purple-50 transition-all disabled:opacity-50"
+                >
+                  <Navigation className="w-6 h-6" />
+                  {demoRunning ? 'Moving...' : 'Start Driving'}
+                </button>
+
+                <button
+                  onClick={async () => {
+                    try {
+                      await updateTripStatus(activeOrderForDemo.orderId, 'driver_arrived', 'driver');
+                      alert('Status updated: Arrived at pickup!');
+                    } catch (e) {
+                      console.error(e);
+                    }
+                  }}
+                  className="bg-purple-500/30 border-2 border-white/50 text-white px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-white/20 transition-all"
+                >
+                  <MapPin className="w-6 h-6" />
+                  Arrived at Pickup
+                </button>
+
+                <button
+                  onClick={async () => {
+                    if (confirm('Complete this trip and request payment?')) {
+                      try {
+                        await recordPayment(activeOrderForDemo.orderId, 'cash', 5.0);
+                        alert('Trip completed!');
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }
+                  }}
+                  className="bg-green-500 text-white px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-green-600 transition-all shadow-lg"
+                >
+                  <Check className="w-6 h-6" />
+                  Complete Trip
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Stats Cards */}
           <div className="grid grid-cols-5 gap-6 mb-8">
             {/* Active Offers */}
@@ -537,6 +723,18 @@ export function DriverSystemDashboard({
           </div>
         </div>
       </div>
+
+      {/* Footer for Driver */}
+      <Footer
+        role="driver"
+        onNavigate={(screen) => {
+          if (screen === 'dashboard') return;
+          if (screen === 'my-offers') onNavigateToMyOffers();
+          else if (screen === 'earnings') onNavigateToEarnings();
+          else if (screen === 'reviews') onNavigateToReviews();
+          else if (screen === 'incoming-requests') onNavigateToIncomingRequests();
+        }}
+      />
     </main>
     </div>
   );

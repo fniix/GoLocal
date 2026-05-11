@@ -1,4 +1,5 @@
-import { ArrowLeft, MapPin, Plus, Clock, Calendar, User, Users, CreditCard, Star, Navigation, Home, Search, Bell, User as UserIcon } from 'lucide-react';
+import { ArrowLeft, MapPin, Plus, Clock, Calendar, Users, CreditCard, Navigation, Home, Search, Bell, User as UserIcon } from 'lucide-react';
+import { LocationSearchInput } from './LocationSearchInput';
 import { useEffect, useRef, useState } from 'react';
 import {
   BAHRAIN_BOUNDS,
@@ -10,6 +11,9 @@ import {
   loadGoogleMapsScript,
   selectDropoff,
   selectPickup,
+  createMarker,
+  geocode,
+  reverseGeocode,
 } from '../../services/googleMapsService';
 import { type DriverData } from '../../services/firebaseService';
 
@@ -53,8 +57,6 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
   const dropoffMarkerRef = useRef<any>(null);
   const driversMarkersRef = useRef<Map<string, any>>(new Map());
   const hasPickupRef = useRef(false);
-  const pickupAutocompleteRef = useRef<HTMLInputElement | null>(null);
-  const dropoffAutocompleteRef = useRef<HTMLInputElement | null>(null);
   const [pickupCoords, setPickupCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [dropoffCoords, setDropoffCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showMatchingModeModal, setShowMatchingModeModal] = useState(false);
@@ -64,25 +66,11 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
   const isGuest = !userName || userName === '' || userName === 'Guest User';
 
   const resolveInputCoordsIfNeeded = async () => {
-    if (!mapInstanceRef.current || !window.google?.maps) return { pickup: pickupCoords, dropoff: dropoffCoords };
-    const geocoder = new window.google.maps.Geocoder();
-    const geocodeAddress = (address: string) =>
-      new Promise<{ lat: number; lng: number } | null>((resolve) => {
-        geocoder.geocode(
-          {
-            address,
-            componentRestrictions: { country: "BH" },
-          },
-          (results: any, status: string) => {
-            if (status !== "OK" || !results?.[0]?.geometry?.location) {
-              resolve(null);
-              return;
-            }
-            const loc = results[0].geometry.location;
-            resolve({ lat: loc.lat(), lng: loc.lng() });
-          },
-        );
-      });
+    if (!mapInstanceRef.current) return { pickup: pickupCoords, dropoff: dropoffCoords };
+    
+    const geocodeAddress = async (address: string) => {
+      return await geocode(address);
+    };
 
     let pickup = pickupCoords;
     let dropoff = dropoffCoords;
@@ -139,73 +127,27 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
       try {
         const map = await initializeMap(mapRef.current, { center: BAHRAIN_CENTER, zoom: 12 });
         mapInstanceRef.current = map;
-        pickupMarkerRef.current = new window.google.maps.Marker({
-          map: null,
-          icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
-        });
-        dropoffMarkerRef.current = new window.google.maps.Marker({
-          map: null,
-          icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
-        });
+        pickupMarkerRef.current = createMarker('#22c55e'); // Green
+        dropoffMarkerRef.current = createMarker('#ef4444'); // Red
 
-        const geocoder = new window.google.maps.Geocoder();
-        map.addListener("click", (event: any) => {
+        map.on("click", async (event: any) => {
           const point = {
-            lat: event.latLng.lat(),
-            lng: event.latLng.lng(),
+            lat: event.latlng.lat,
+            lng: event.latlng.lng,
           };
-          geocoder.geocode({ location: point }, (results: any, status: string) => {
-            const address = status === "OK" && results?.[0]?.formatted_address ? results[0].formatted_address : "Pinned location";
-            if (!hasPickupRef.current) {
-              hasPickupRef.current = true;
-              setPickupCoords(point);
-              setPickupLocation(address);
-              selectPickup(pickupMarkerRef.current, map, point);
-            } else {
-              setDropoffCoords(point);
-              setDropoffLocation(address);
-              selectDropoff(dropoffMarkerRef.current, map, point);
-            }
-          });
-        });
-
-        await loadGoogleMapsScript();
-        if (pickupAutocompleteRef.current) {
-          const pickupAuto = new window.google.maps.places.Autocomplete(pickupAutocompleteRef.current, {
-            componentRestrictions: { country: "bh" },
-            bounds: BAHRAIN_BOUNDS,
-            strictBounds: true,
-          });
-          pickupAuto.addListener("place_changed", () => {
-            const place = pickupAuto.getPlace();
-            const loc = place?.geometry?.location;
-            if (!loc) return;
-            const coords = { lat: loc.lat(), lng: loc.lng() };
+          const address = await reverseGeocode(point.lat, point.lng);
+          
+          if (!hasPickupRef.current) {
             hasPickupRef.current = true;
-            setPickupCoords(coords);
-            setPickupLocation(place.formatted_address || place.name || "");
-            selectPickup(pickupMarkerRef.current, map, coords);
-            map.panTo(coords);
-          });
-        }
-
-        if (dropoffAutocompleteRef.current) {
-          const dropoffAuto = new window.google.maps.places.Autocomplete(dropoffAutocompleteRef.current, {
-            componentRestrictions: { country: "bh" },
-            bounds: BAHRAIN_BOUNDS,
-            strictBounds: true,
-          });
-          dropoffAuto.addListener("place_changed", () => {
-            const place = dropoffAuto.getPlace();
-            const loc = place?.geometry?.location;
-            if (!loc) return;
-            const coords = { lat: loc.lat(), lng: loc.lng() };
-            setDropoffCoords(coords);
-            setDropoffLocation(place.formatted_address || place.name || "");
-            selectDropoff(dropoffMarkerRef.current, map, coords);
-            map.panTo(coords);
-          });
-        }
+            setPickupCoords(point);
+            setPickupLocation(address);
+            selectPickup(pickupMarkerRef.current, map, point);
+          } else {
+            setDropoffCoords(point);
+            setDropoffLocation(address);
+            selectDropoff(dropoffMarkerRef.current, map, point);
+          }
+        });
 
         unDrivers = listenDriversLive(
           (drivers: DriverData[]) => {
@@ -305,28 +247,25 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
 
           {/* Pickup Location */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-purple-600" />
               Pickup Location
             </label>
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                <div className="w-3 h-3 bg-purple-600 rounded-full"></div>
-              </div>
-              <input
-                ref={pickupAutocompleteRef}
-                type="text"
-                placeholder="Enter pickup location"
-                value={pickupLocation}
-                onChange={(e) => setPickupLocation(e.target.value)}
-                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-              />
-              <button
-                onClick={centerOnUserLocation}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-600 hover:bg-purple-50 p-1 rounded"
-              >
-                <Navigation className="w-5 h-5" />
-              </button>
-            </div>
+            <LocationSearchInput
+              value={pickupLocation}
+              placeholder="Search for pickup location..."
+              colorScheme="purple"
+              showCurrentLocation
+              onCurrentLocation={centerOnUserLocation}
+              onChange={(val) => setPickupLocation(val)}
+              onSelect={(addr, coords) => {
+                setPickupLocation(addr);
+                setPickupCoords(coords);
+                hasPickupRef.current = true;
+                selectPickup(pickupMarkerRef.current, mapInstanceRef.current, coords);
+                mapInstanceRef.current?.panTo(coords);
+              }}
+            />
           </div>
 
           {/* Favorite Locations */}
@@ -374,22 +313,22 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
 
           {/* Drop-off Location */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
               Drop-off Location
             </label>
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2">
-                <div className="w-3 h-3 bg-red-600 rounded-full"></div>
-              </div>
-              <input
-                ref={dropoffAutocompleteRef}
-                type="text"
-                placeholder="Enter drop-off location"
-                value={dropoffLocation}
-                onChange={(e) => setDropoffLocation(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-              />
-            </div>
+            <LocationSearchInput
+              value={dropoffLocation}
+              placeholder="Search for drop-off location..."
+              colorScheme="red"
+              onChange={(val) => setDropoffLocation(val)}
+              onSelect={(addr, coords) => {
+                setDropoffLocation(addr);
+                setDropoffCoords(coords);
+                selectDropoff(dropoffMarkerRef.current, mapInstanceRef.current, coords);
+                mapInstanceRef.current?.panTo(coords);
+              }}
+            />
           </div>
 
           {/* Add Stop Button */}
@@ -587,7 +526,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
       </div>
 
       {/* Fixed Confirm Button */}
-      <div className="fixed bottom-20 left-0 right-0 px-6 py-4 bg-white border-t border-gray-200 shadow-lg">
+      <div className="fixed bottom-20 left-0 right-0 px-6 py-4 bg-white border-t border-gray-200 shadow-lg z-[1001]">
         <button
           disabled={!pickupLocation || !dropoffLocation}
           onClick={() => void handleConfirmBooking()}
@@ -607,7 +546,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
       </div>
 
       {/* Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 z-[1001]">
         <div className="max-w-md mx-auto flex justify-around items-center">
           <button className="flex flex-col items-center text-purple-600 transition-colors">
             <Home className="w-6 h-6 mb-1" />
@@ -633,7 +572,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
 
       {/* Authentication Modal */}
       {showAuthModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-6 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-6 z-[9999]">
           <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
             <div className="text-center mb-6">
               <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -664,7 +603,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
       )}
 
       {showMatchingModeModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-6 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-6 z-[9999]">
           <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
             <h3 className="text-xl font-bold text-gray-800 mb-2">Choose Search Mode</h3>
             <p className="text-gray-600 text-sm mb-5">Do you want AI recommendation or manual driver selection?</p>

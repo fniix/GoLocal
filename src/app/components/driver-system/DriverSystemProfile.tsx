@@ -1,7 +1,8 @@
-import { Home, FileText, Inbox, Truck, DollarSign, Star, User, Phone, Mail, MapPin, Car, Shield, Lock, TrendingUp, CreditCard, BarChart3 } from 'lucide-react';
+import { User, Phone, Mail, MapPin, Car, Shield, Lock, TrendingUp, CreditCard, BarChart3, FileText, Star } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { auth } from '../../../firebase';
 import { listenForDriverOrders, listenForPendingOrders, listenToDrivers, listenToUserProfile } from '../../../services/firebaseService';
+import { DriverSidebar } from './DriverSidebar';
 
 interface DriverSystemProfileProps {
   onNavigateToDashboard: () => void;
@@ -75,95 +76,19 @@ export function DriverSystemProfile({
 
   return (
     <div className="size-full flex bg-gray-50">
-      {/* Fixed Left Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-purple-600 to-blue-600 text-white flex-shrink-0 flex flex-col">
-        {/* Logo */}
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg overflow-hidden">
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg">Driver System</h2>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation Menu */}
-        <nav className="flex-1 py-6 overflow-y-auto">
-          <button 
-            onClick={onNavigateToDashboard}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Home className="w-5 h-5" />
-            Dashboard
-          </button>
-          
-          <button 
-            onClick={onNavigateToMyOffers}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <FileText className="w-5 h-5" />
-            My Offers
-          </button>
-          
-          <button 
-            onClick={onNavigateToIncomingRequests}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Inbox className="w-5 h-5" />
-            Incoming Requests
-            {pendingRequestsCount > 0 && (
-              <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingRequestsCount}</span>
-            )}
-          </button>
-          
-          <button 
-            onClick={onNavigateToActiveDeliveries}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Truck className="w-5 h-5" />
-            Active Deliveries
-            {activeDeliveriesCount > 0 && (
-              <span className="ml-auto bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">{activeDeliveriesCount}</span>
-            )}
-          </button>
-          
-          <button 
-            onClick={onNavigateToEarnings}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <DollarSign className="w-5 h-5" />
-            Earnings
-          </button>
-          
-          <button 
-            onClick={onNavigateToReviews}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Star className="w-5 h-5" />
-            Reviews
-          </button>
-          
-          <button className="w-full px-6 py-3 flex items-center gap-3 bg-white/10 border-l-4 border-white text-white font-semibold">
-            <User className="w-5 h-5" />
-            Profile
-          </button>
-        </nav>
-
-        {/* Footer */}
-        <div className="p-6 border-t border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <User className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">Driver</p>
-              <p className="text-xs text-white/70">{driverName}</p>
-            </div>
-          </div>
-        </div>
-      </aside>
+      <DriverSidebar
+        activePage="profile"
+        onNavigateToDashboard={onNavigateToDashboard}
+        onNavigateToMyOffers={onNavigateToMyOffers}
+        onNavigateToIncomingRequests={onNavigateToIncomingRequests}
+        onNavigateToActiveDeliveries={onNavigateToActiveDeliveries}
+        onNavigateToEarnings={onNavigateToEarnings}
+        onNavigateToReviews={onNavigateToReviews}
+        onNavigateToProfile={() => {}}
+        pendingRequestsCount={pendingRequestsCount}
+        activeDeliveriesCount={activeDeliveriesCount}
+        driverName={driverName}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto">

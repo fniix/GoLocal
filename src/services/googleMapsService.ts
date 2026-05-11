@@ -11,6 +11,20 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { DriverData } from "./firebaseService";
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import 'leaflet-routing-machine';
+
+// Fix leaflet default icon issue
+import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
+import iconUrl from 'leaflet/dist/images/marker-icon.png';
+import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
+
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl,
+  iconUrl,
+  shadowUrl,
+});
 
 export const BAHRAIN_CENTER = { lat: 26.0667, lng: 50.5577 };
 export const BAHRAIN_BOUNDS = {
@@ -21,63 +35,30 @@ export const BAHRAIN_BOUNDS = {
 };
 const DEFAULT_ZOOM = 11;
 
-declare global {
-  interface Window {
-    google?: any;
-  }
-}
-
-let mapsLoaderPromise: Promise<void> | null = null;
 let demoSafeModeEnabled = false;
 let demoMovementStopFn: (() => void) | null = null;
 
 export function loadGoogleMapsScript() {
-  if (window.google?.maps) return Promise.resolve();
-  if (mapsLoaderPromise) return mapsLoaderPromise;
-
-  mapsLoaderPromise = new Promise<void>((resolve, reject) => {
-    const existing = document.getElementById("google-maps-script");
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Failed to load Google Maps")), { once: true });
-      return;
-    }
-
-    const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-    if (!key) {
-      reject(new Error("Missing VITE_GOOGLE_MAPS_API_KEY"));
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = "google-maps-script";
-    script.async = true;
-    script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Google Maps"));
-    document.head.appendChild(script);
-  });
-
-  return mapsLoaderPromise;
+  return Promise.resolve();
 }
 
 export async function initializeMap(
   container: HTMLDivElement,
   options?: { center?: { lat: number; lng: number }; zoom?: number },
 ) {
-  await loadGoogleMapsScript();
-  return new window.google.maps.Map(container, {
+  const map = L.map(container, {
     center: options?.center ?? BAHRAIN_CENTER,
     zoom: options?.zoom ?? DEFAULT_ZOOM,
-    restriction: {
-      latLngBounds: BAHRAIN_BOUNDS,
-      strictBounds: false,
-    },
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: false,
+    zoomControl: false,
+    attributionControl: false,
   });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap contributors',
+  }).addTo(map);
+
+  return map;
 }
 
 export function getUserLocation() {
@@ -173,20 +154,24 @@ export function loadDriversMarkers(
       };
       const existing = markerStore.get(driver.driverId);
       if (existing) {
-        existing.setPosition(position);
+        existing.setLatLng(position);
         return;
       }
-      const marker = new window.google.maps.Marker({
-        map,
-        position,
-        title: driver.name,
+      const customIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: `<div style="background-color: #3b82f6; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
       });
+
+      const marker = L.marker(position, { icon: customIcon }).addTo(map);
+      marker.bindTooltip(driver.name, { direction: 'top', offset: [0, -10] });
       markerStore.set(driver.driverId, marker);
     });
 
   markerStore.forEach((marker, id) => {
     if (!visibleIds.has(id)) {
-      marker.setMap(null);
+      map.removeLayer(marker);
       markerStore.delete(id);
     }
   });
@@ -198,160 +183,120 @@ export function listenDriversLive(
 ): Unsubscribe {
   const driversRef = collection(db, "drivers");
   const availableQuery = query(driversRef, where("status", "==", "available"));
+
   return onSnapshot(
     availableQuery,
     (snapshot) => {
       const drivers = snapshot.docs.map((item) => item.data() as DriverData);
       onData(drivers);
     },
-    onError,
+    (error) => {
+      if (onError) onError(error);
+    },
   );
-}
-
-export function selectPickup(marker: any, map: any, location: { lat: number; lng: number }) {
-  marker.setPosition(location);
-  marker.setMap(map);
-}
-
-export function selectDropoff(marker: any, map: any, location: { lat: number; lng: number }) {
-  marker.setPosition(location);
-  marker.setMap(map);
 }
 
 export function drawRoute(
   map: any,
-  origin: { lat: number; lng: number },
-  destination: { lat: number; lng: number },
-  renderer?: any,
+  start: { lat: number; lng: number },
+  end: { lat: number; lng: number },
+  routeStore: {
+    startMarker?: any;
+    endMarker?: any;
+    routingControl?: any;
+  },
 ) {
-  const directionsService = new window.google.maps.DirectionsService();
-  const directionsRenderer = renderer ?? new window.google.maps.DirectionsRenderer({ suppressMarkers: true });
-  directionsRenderer.setMap(map);
-
-  return new Promise<any>((resolve, reject) => {
-    directionsService.route(
-      {
-        origin,
-        destination,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result: any, status: string) => {
-        if (status !== "OK") {
-          reject(new Error(`Directions failed: ${status}`));
-          return;
-        }
-        directionsRenderer.setDirections(result);
-        resolve(result);
-      },
-    );
-  });
-}
-
-export async function getRoutePoints(
-  origin: { lat: number; lng: number },
-  destination: { lat: number; lng: number },
-) {
-  await loadGoogleMapsScript();
-  const directionsService = new window.google.maps.DirectionsService();
-  return new Promise<Array<{ lat: number; lng: number }>>((resolve, reject) => {
-    directionsService.route(
-      {
-        origin,
-        destination,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result: any, status: string) => {
-        if (status !== "OK") {
-          reject(new Error(`Directions failed: ${status}`));
-          return;
-        }
-        const route = result?.routes?.[0];
-        if (!route?.overview_path) {
-          reject(new Error("No route points available"));
-          return;
-        }
-        resolve(route.overview_path.map((point: any) => ({ lat: point.lat(), lng: point.lng() })));
-      },
-    );
-  });
-}
-
-export function listenDriverTracking(
-  driverId: string,
-  onLocation: (location: { lat: number; lng: number }) => void,
-  onError?: (error: unknown) => void,
-) {
-  return onSnapshot(
-    doc(db, "drivers", driverId),
-    (snapshot) => {
-      if (!snapshot.exists()) return;
-      const data = snapshot.data() as DriverData;
-      onLocation(data.currentLocation);
-    },
-    onError,
-  );
-}
-
-export function animateMarker(marker: any, target: { lat: number; lng: number }, duration = 1000) {
-  const start = marker.getPosition();
-  if (!start) {
-    marker.setPosition(target);
-    return;
+  if (routeStore.startMarker) map.removeLayer(routeStore.startMarker);
+  if (routeStore.endMarker) map.removeLayer(routeStore.endMarker);
+  if (routeStore.routingControl) {
+    map.removeControl(routeStore.routingControl);
   }
-  const from = { lat: start.lat(), lng: start.lng() };
-  const startedAt = performance.now();
 
-  const tick = (now: number) => {
-    const t = Math.min((now - startedAt) / duration, 1);
-    marker.setPosition({
-      lat: from.lat + (target.lat - from.lat) * t,
-      lng: from.lng + (target.lng - from.lng) * t,
-    });
-    if (t < 1) requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
+  routeStore.startMarker = L.marker(start).addTo(map);
+  routeStore.endMarker = L.marker(end).addTo(map);
+
+  const plan = new (L as any).Routing.Plan([
+    L.latLng(start.lat, start.lng),
+    L.latLng(end.lat, end.lng)
+  ], {
+    createMarker: function() { return null; }
+  });
+
+  routeStore.routingControl = (L as any).Routing.control({
+    plan,
+    lineOptions: {
+      styles: [{ color: '#8b5cf6', opacity: 0.8, weight: 5 }]
+    },
+    show: false,
+    addWaypoints: false,
+    routeWhileDragging: false,
+    fitSelectedRoutes: true
+  }).addTo(map);
 }
 
-export function simulateDriverMovement(routePoints: Array<{ lat: number; lng: number }>) {
-  let currentIndex = 0;
-  return () => {
-    if (routePoints.length === 0) return BAHRAIN_CENTER;
-    const point = routePoints[currentIndex];
-    currentIndex = (currentIndex + 1) % routePoints.length;
-    return point;
-  };
+export function startDriverLocationUpdates(driverId: string, options?: { intervalMs?: number }) {
+  if (demoSafeModeEnabled) return () => {};
+  
+  const intervalMs = options?.intervalMs ?? 5000;
+  const interval = setInterval(() => {
+    getUserLocation()
+      .then((coords) => {
+        const driverRef = doc(db, "drivers", driverId);
+        updateDoc(driverRef, {
+          currentLocation: coords,
+          lastUpdatedAt: serverTimestamp(),
+        }).catch(() => {});
+      })
+      .catch(() => {});
+  }, intervalMs);
+
+  return () => clearInterval(interval);
 }
 
-export async function startDemoMovement(
+export function startDemoMovement(
   orderId: string,
   driverId: string,
-  origin: { lat: number; lng: number },
-  destination: { lat: number; lng: number },
+  start: { lat: number; lng: number },
+  end: { lat: number; lng: number },
+  durationMs = 30000,
 ) {
-  try {
-    const routePoints = await getRoutePoints(origin, destination);
-    const nextPoint = simulateDriverMovement(routePoints);
-    let lastPersisted = Date.now();
-    const timer = window.setInterval(async () => {
-      const point = nextPoint();
-      try {
-        if (Date.now() - lastPersisted >= 5000) {
-          await updateDoc(doc(db, "drivers", driverId), {
-            currentLocation: point,
-            lastUpdatedAt: serverTimestamp(),
-          });
-          lastPersisted = Date.now();
-        }
-      } catch (error) {
-        console.error("Demo movement firestore update failed:", error);
+  return new Promise<void>((resolve) => {
+    if (demoMovementStopFn) {
+      demoMovementStopFn();
+    }
+
+    const steps = 60;
+    const intervalMs = durationMs / steps;
+    const latStep = (end.lat - start.lat) / steps;
+    const lngStep = (end.lng - start.lng) / steps;
+
+    let currentStep = 0;
+    let currentLat = start.lat;
+    let currentLng = start.lng;
+
+    const interval = setInterval(() => {
+      currentStep++;
+      currentLat += latStep;
+      currentLng += lngStep;
+
+      const driverRef = doc(db, "drivers", driverId);
+      updateDoc(driverRef, {
+        currentLocation: { lat: currentLat, lng: currentLng },
+        lastUpdatedAt: serverTimestamp(),
+      }).catch(console.error);
+
+      if (currentStep >= steps) {
+        clearInterval(interval);
+        demoMovementStopFn = null;
+        resolve();
       }
-    }, 1000);
-    demoMovementStopFn = () => window.clearInterval(timer);
-    return demoMovementStopFn;
-  } catch (error) {
-    console.error("startDemoMovement failed:", error);
-    return null;
-  }
+    }, intervalMs);
+
+    demoMovementStopFn = () => {
+      clearInterval(interval);
+      resolve();
+    };
+  });
 }
 
 export function stopDemoMovement() {
@@ -361,56 +306,90 @@ export function stopDemoMovement() {
   }
 }
 
-export async function mockMovementForDemo(
-  driverId: string,
-  target: { lat: number; lng: number } = BAHRAIN_CENTER,
-) {
-  const stop = await startDemoMovement("demo-order", driverId, BAHRAIN_CENTER, target);
-  return () => {
-    if (stop) stop();
-  };
+export function selectPickup(marker: any, map: any, location: { lat: number; lng: number }) {
+  if (marker) {
+    marker.setLatLng(location);
+    if (!map.hasLayer(marker)) marker.addTo(map);
+  }
 }
 
-export function startDriverLocationUpdates(
-  driverId: string,
-  options?: {
-    intervalMs?: number;
-    demoTarget?: { lat: number; lng: number };
-    activeOrderId?: string;
-    origin?: { lat: number; lng: number };
-    destination?: { lat: number; lng: number };
-  },
-) {
-  const intervalMs = options?.intervalMs ?? 5000;
-  let stopMock: (() => void) | null = null;
+export function selectDropoff(marker: any, map: any, location: { lat: number; lng: number }) {
+  if (marker) {
+    marker.setLatLng(location);
+    if (!map.hasLayer(marker)) marker.addTo(map);
+  }
+}
 
-  const timer = window.setInterval(async () => {
-    try {
-      const loc = await getUserLocation();
-      await updateDoc(doc(db, "drivers", driverId), {
-        currentLocation: loc,
-        lastUpdatedAt: serverTimestamp(),
-      });
-    } catch (error) {
-      if (demoSafeModeEnabled || !stopMock) {
-        if (options?.activeOrderId && options?.origin && options?.destination) {
-          const stop = await startDemoMovement(
-            options.activeOrderId,
-            driverId,
-            options.origin,
-            options.destination,
-          );
-          if (stop) stopMock = stop;
-        } else {
-          const stop = await mockMovementForDemo(driverId, options?.demoTarget ?? BAHRAIN_CENTER);
-          stopMock = stop;
-        }
-      }
+export function createMarker(color: string, position?: { lat: number; lng: number }) {
+  const customIcon = L.divIcon({
+    className: 'custom-div-icon',
+    html: `<div style="background-color: ${color}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8]
+  });
+  return L.marker(position ?? BAHRAIN_CENTER, { icon: customIcon });
+}
+
+export async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+    const data = await res.json();
+    return data.display_name || 'Pinned location';
+  } catch (e) {
+    return 'Pinned location';
+  }
+}
+
+export async function geocode(address: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&countrycodes=bh&limit=1`);
+    const data = await res.json();
+    if (data && data.length > 0) {
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
     }
-  }, intervalMs);
-
-  return () => {
-    window.clearInterval(timer);
-    if (stopMock) stopMock();
-  };
+    return null;
+  } catch (e) {
+    return null;
+  }
 }
+
+export function listenDriverTracking(
+  driverId: string,
+  onLocationUpdate: (location: { lat: number; lng: number }) => void,
+  onError?: (error: unknown) => void
+): Unsubscribe {
+  const driverRef = doc(db, "drivers", driverId);
+  return onSnapshot(
+    driverRef,
+    (snapshot) => {
+      const data = snapshot.data();
+      if (data && data.currentLocation) {
+        onLocationUpdate({ lat: data.currentLocation.lat, lng: data.currentLocation.lng });
+      }
+    },
+    (error) => {
+      if (onError) onError(error);
+    }
+  );
+}
+
+export function mockMovementForDemo(driverId: string, target: { lat: number; lng: number }) {
+  // basic mock that slowly moves towards target
+  let currentLat = BAHRAIN_CENTER.lat;
+  let currentLng = BAHRAIN_CENTER.lng;
+  const interval = setInterval(() => {
+    currentLat += (target.lat - currentLat) * 0.1;
+    currentLng += (target.lng - currentLng) * 0.1;
+    updateDoc(doc(db, "drivers", driverId), {
+      currentLocation: { lat: currentLat, lng: currentLng }
+    }).catch(() => {});
+  }, 2000);
+  return () => clearInterval(interval);
+}
+
+export function animateMarker(marker: any, position: { lat: number; lng: number }) {
+  if (marker) {
+    marker.setLatLng(position);
+  }
+}
+

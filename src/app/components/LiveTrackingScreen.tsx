@@ -8,6 +8,7 @@ import {
   initializeMap,
   listenDriverTracking,
   mockMovementForDemo,
+  createMarker,
 } from '../../services/googleMapsService';
 
 interface LiveTrackingScreenProps {
@@ -36,7 +37,7 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
   const routeRendererRef = useRef<any>(null);
 
   const driverInfo = {
-    name: 'Ahmed Al-Khalifa',
+    name: driverName || 'Ahmed Al-Khalifa',
     photo: '👨‍💼',
     rating: 4.9,
     vehicleMake: 'Toyota Camry',
@@ -72,31 +73,14 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
         const map = await initializeMap(mapContainerRef.current, { center: BAHRAIN_CENTER, zoom: 12 });
         mapRef.current = map;
 
-        pickupMarkerRef.current = new window.google.maps.Marker({
-          map,
-          position: BAHRAIN_CENTER,
-          icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
-          title: "Pickup",
-        });
-        dropoffMarkerRef.current = new window.google.maps.Marker({
-          map,
-          position: { lat: BAHRAIN_CENTER.lat + 0.05, lng: BAHRAIN_CENTER.lng + 0.05 },
-          icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
-          title: "Dropoff",
-        });
-        driverMarkerRef.current = new window.google.maps.Marker({
-          map,
-          position: BAHRAIN_CENTER,
-          title: "Driver",
-          icon: {
-            path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 5,
-            fillColor: "#4F46E5",
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 1,
-          },
-        });
+        pickupMarkerRef.current = createMarker('#22c55e', BAHRAIN_CENTER);
+        pickupMarkerRef.current.addTo(map);
+        
+        dropoffMarkerRef.current = createMarker('#ef4444', { lat: BAHRAIN_CENTER.lat + 0.05, lng: BAHRAIN_CENTER.lng + 0.05 });
+        dropoffMarkerRef.current.addTo(map);
+        
+        driverMarkerRef.current = createMarker('#4F46E5', BAHRAIN_CENTER);
+        driverMarkerRef.current.addTo(map);
 
         if (!orderId) {
           setMapLoading(false);
@@ -105,8 +89,8 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
 
         unOrder = listenOrderById(orderId, (order) => {
           if (!order || !mapRef.current) return;
-          pickupMarkerRef.current?.setPosition(order.pickupLocation);
-          dropoffMarkerRef.current?.setPosition(order.dropoffLocation);
+          pickupMarkerRef.current?.setLatLng(order.pickupLocation);
+          dropoffMarkerRef.current?.setLatLng(order.dropoffLocation);
           mapRef.current.panTo(order.pickupLocation);
           setDistanceRemaining(
             Math.max(
@@ -210,8 +194,7 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
           )}
         </div>
 
-        {/* Top Controls */}
-        <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/50 to-transparent">
+        <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/50 to-transparent z-[1000]">
           <div className="flex items-center justify-between">
             <button 
               onClick={onBack}
@@ -234,7 +217,7 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
           </div>
 
           {/* Live Status Banner */}
-          <div className="mt-4 bg-white rounded-2xl shadow-lg p-4">
+          <div className="mt-4 bg-white rounded-2xl shadow-lg p-4 relative z-50">
             <div className="flex items-center gap-3">
               <div className={`w-12 h-12 ${statusInfo.color} rounded-full flex items-center justify-center text-white`}>
                 {statusInfo.icon}
@@ -305,7 +288,7 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
 
       {/* Bottom Sheet */}
       <div 
-        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl transition-all duration-300 ${
+        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl transition-all duration-300 z-[1001] ${
           isBottomSheetExpanded ? 'h-[70%]' : 'h-auto'
         }`}
         style={{ paddingBottom: '80px' }}
@@ -474,7 +457,7 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
       </div>
 
       {/* Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 z-[1001]">
         <div className="max-w-md mx-auto flex justify-around items-center">
           <button className="flex flex-col items-center text-purple-600 transition-colors">
             <Home className="w-6 h-6 mb-1" />

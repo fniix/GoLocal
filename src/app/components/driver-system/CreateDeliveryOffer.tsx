@@ -1,6 +1,8 @@
-import { Home, FileText, Inbox, Truck, DollarSign, Star, User, ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
 import { createOffer } from '../../../services/firebaseService';
+import { DriverSidebar } from './DriverSidebar';
+import { LocationSearchInput } from '../LocationSearchInput';
 
 interface CreateDeliveryOfferProps {
   onBack: () => void;
@@ -25,8 +27,10 @@ export function CreateDeliveryOffer({
 }: CreateDeliveryOfferProps) {
   const [fromCity, setFromCity] = useState('');
   const [fromArea, setFromArea] = useState('');
+  const [fromCoords, setFromCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [toCity, setToCity] = useState('');
   const [toArea, setToArea] = useState('');
+  const [toCoords, setToCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [serviceType, setServiceType] = useState('');
   const [priceType, setPriceType] = useState('');
   const [basePrice, setBasePrice] = useState('');
@@ -64,95 +68,17 @@ export function CreateDeliveryOffer({
   };
 
   return (
-    <div className="size-full flex bg-slate-50 text-slate-900 transition-colors duration-300">
-      {/* Fixed Left Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-purple-600 to-blue-600 text-white flex-shrink-0 flex flex-col">
-        {/* Logo */}
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg overflow-hidden">
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg">Driver System</h2>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation Menu */}
-        <nav className="flex-1 py-6 overflow-y-auto">
-          <button 
-            onClick={onNavigateToDashboard}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Home className="w-5 h-5" />
-            Dashboard
-          </button>
-          
-          <button 
-            onClick={onNavigateToMyOffers}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <FileText className="w-5 h-5" />
-            My Offers
-          </button>
-          
-          <button 
-            onClick={onNavigateToIncomingRequests}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Inbox className="w-5 h-5" />
-            Incoming Requests
-            <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">3</span>
-          </button>
-          
-          <button 
-            onClick={onNavigateToActiveDeliveries}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Truck className="w-5 h-5" />
-            Active Deliveries
-            <span className="ml-auto bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">2</span>
-          </button>
-          
-          <button 
-            onClick={onNavigateToEarnings}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <DollarSign className="w-5 h-5" />
-            Earnings
-          </button>
-          
-          <button 
-            onClick={onNavigateToReviews}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Star className="w-5 h-5" />
-            Reviews
-          </button>
-          
-          <button 
-            onClick={onNavigateToProfile}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <User className="w-5 h-5" />
-            Profile
-          </button>
-        </nav>
-
-        {/* Footer */}
-        <div className="p-6 border-t border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <User className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">Driver</p>
-              <p className="text-xs text-white/70">Ahmed Al-Khalifa</p>
-            </div>
-          </div>
-        </div>
-      </aside>
+    <div className="size-full flex bg-slate-50 text-slate-900">
+      <DriverSidebar
+        activePage="my-offers"
+        onNavigateToDashboard={onNavigateToDashboard}
+        onNavigateToMyOffers={onNavigateToMyOffers}
+        onNavigateToIncomingRequests={onNavigateToIncomingRequests}
+        onNavigateToActiveDeliveries={onNavigateToActiveDeliveries}
+        onNavigateToEarnings={onNavigateToEarnings}
+        onNavigateToReviews={onNavigateToReviews}
+        onNavigateToProfile={onNavigateToProfile}
+      />
 
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
@@ -194,16 +120,17 @@ export function CreateDeliveryOffer({
                 </div>
 
                 {/* From Area */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    From Area *
+                <div className="col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-purple-600" />
+                    From Area / Pickup Location *
                   </label>
-                  <input
-                    type="text"
+                  <LocationSearchInput
                     value={fromArea}
-                    onChange={(e) => setFromArea(e.target.value)}
-                    placeholder="Enter area name"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    placeholder="Search pickup area or address..."
+                    colorScheme="purple"
+                    onChange={val => setFromArea(val)}
+                    onSelect={(addr, coords) => { setFromArea(addr); setFromCoords(coords); }}
                   />
                 </div>
 
@@ -225,17 +152,23 @@ export function CreateDeliveryOffer({
                 </div>
 
                 {/* To Area */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    To Area *
+                <div className="col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                    To Area / Drop-off Location *
                   </label>
-                  <input
-                    type="text"
+                  <LocationSearchInput
                     value={toArea}
-                    onChange={(e) => setToArea(e.target.value)}
-                    placeholder="Enter area name"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    placeholder="Search drop-off area or address..."
+                    colorScheme="red"
+                    onChange={val => setToArea(val)}
+                    onSelect={(addr, coords) => { setToArea(addr); setToCoords(coords); }}
                   />
+                  {fromCoords && toCoords && (
+                    <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
+                      ✓ Both locations pinned on map
+                    </p>
+                  )}
                 </div>
 
                 {/* Service Type */}

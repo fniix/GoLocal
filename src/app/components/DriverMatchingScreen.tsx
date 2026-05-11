@@ -1,6 +1,6 @@
 import { ArrowLeft, Phone, MessageCircle, X, Star, Navigation, Share2, Shield, Clock, Home, Search, Bell, User as UserIcon, Car } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { cancelOrder, listenOrderById, listenToDrivers, setPreferredDriverForOrder, type DriverData as FirestoreDriverData, type OrderData } from '../../services/firebaseService';
+import { cancelOrder, listenOrderById, setPreferredDriverForOrder, listenToDrivers, type DriverData as FirestoreDriverData, type OrderData } from '../../services/firebaseService';
 import {
   BAHRAIN_CENTER,
   animateMarker,
@@ -10,67 +10,56 @@ import {
   initializeMap,
   listenDriverTracking,
   loadDriversMarkers,
+  createMarker,
 } from '../../services/googleMapsService';
+import { updateDoc, doc } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { AISearchAnimation } from './AISearchAnimation';
 
 // بيانات السائقين الوهميين للاختبار
 const DUMMY_DRIVERS: DriverData[] = [
   {
-    uid: 'dummy-1',
-    name: 'أحمد الرفاعي',
+    uid: 'dummy-amwaj-1',
+    name: 'James Wilson',
+    vehicleType: 'Tesla Model 3',
+    vehiclePlate: 'AMW 999',
+    phone: '+973 3344 5566',
+    status: 'available',
+    currentLocation: { lat: 26.2800, lng: 50.6600 },
+    seats: 4,
+    pricePerKm: 3.5,
+    area: 'Amwaj Islands',
     rating: 4.9,
     totalTrips: 1250,
-    vehicleType: 'Toyota Camry',
-    vehiclePlate: 'ABC 123',
-    phone: '+973 1234 5678',
-    status: 'available',
-    currentLocation: { lat: 26.1300, lng: 50.5500 }, // منطقة الرفاع
-    seats: 4,
-    pricePerKm: 0.25,
-    area: 'الرفاع',
   },
   {
-    uid: 'dummy-2',
-    name: 'محمد المنامي',
+    uid: 'dummy-riffa-1',
+    name: 'Michael Chen',
+    vehicleType: 'Lexus ES',
+    vehiclePlate: 'RIF 777',
+    phone: '+973 3322 1100',
+    status: 'available',
+    currentLocation: { lat: 26.1167, lng: 50.5500 },
+    seats: 4,
+    pricePerKm: 2.8,
+    area: 'Riffa',
     rating: 4.7,
-    totalTrips: 890,
-    vehicleType: 'Honda Civic',
-    vehiclePlate: 'XYZ 456',
-    phone: '+973 8765 4321',
-    status: 'available',
-    currentLocation: { lat: 26.2235, lng: 50.5822 }, // منطقة المنامة
-    seats: 4,
-    pricePerKm: 0.30,
-    area: 'المنامة',
+    totalTrips: 840,
   },
   {
-    uid: 'dummy-3',
-    name: 'علي الرفاعي',
+    uid: 'dummy-manama-1',
+    name: 'Sarah Parker',
+    vehicleType: 'Toyota Camry',
+    vehiclePlate: 'MAN 555',
+    phone: '+973 3988 7766',
+    status: 'available',
+    currentLocation: { lat: 26.2235, lng: 50.5876 },
+    seats: 4,
+    pricePerKm: 2.2,
+    area: 'Manama',
     rating: 4.8,
     totalTrips: 2100,
-    vehicleType: 'Nissan Altima',
-    vehiclePlate: 'DEF 789',
-    phone: '+973 5555 6666',
-    status: 'available',
-    currentLocation: { lat: 26.1350, lng: 50.5450 }, // منطقة الرفاع
-    seats: 4,
-    pricePerKm: 0.28,
-    area: 'الرفاع',
-  },
-  {
-    uid: 'dummy-4',
-    name: 'فاطمة الجفيري',
-    rating: 4.6,
-    totalTrips: 650,
-    vehicleType: 'Hyundai Elantra',
-    vehiclePlate: 'GHI 012',
-    phone: '+973 7777 8888',
-    status: 'available',
-    currentLocation: { lat: 26.2100, lng: 50.5900 }, // منطقة الجفير
-    seats: 4,
-    pricePerKm: 0.35,
-    area: 'الجفير',
-  },
+  }
 ];
 
 interface DriverData {
@@ -93,7 +82,7 @@ interface DriverMatchingScreenProps {
   onBack: () => void;
   pickupLocation: string;
   dropoffLocation: string;
-  onDriverMatched?: () => void;
+  onDriverMatched?: (name: string) => void;
   userCity?: string;
   orderId?: string | null;
   matchingMode?: 'ai' | 'manual';
@@ -132,18 +121,28 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
     vehiclePlate: '',
     phone: driver.phone || '',
     status: driver.status,
-    currentLocation: driver.currentLocation,
+    currentLocation: driver.currentLocation || BAHRAIN_CENTER,
     seats: Number((driver as any).seats ?? 4),
     pricePerKm: Number((driver as any).pricePerKm ?? 2.5),
     area: String((driver as any).area ?? userCity),
+    isReal: true,
   });
 
   useEffect(() => {
     const unsubscribe = listenToDrivers(
       (items) => {
         const mappedDrivers = items.map(formatDriver);
-        // دمج السائقين الوهميين مع السائقين الحقيقيين للاختبار
-        const allDrivers = [...mappedDrivers, ...DUMMY_DRIVERS];
+        
+        // Filter dummy drivers based on the selected area if provided
+        const filteredDummies = DUMMY_DRIVERS.filter(d => 
+          !areaFilter || 
+          d.area.toLowerCase().includes(areaFilter.toLowerCase()) || 
+          areaFilter.toLowerCase().includes(d.area.toLowerCase())
+        );
+
+        // Always prioritize real drivers, but merge with area-relevant dummies
+        const availableReal = mappedDrivers.filter(d => d.status === 'available');
+        const allDrivers = [...mappedDrivers, ...filteredDummies];
         setDrivers(allDrivers);
 
         const availableDrivers = allDrivers.filter((item) => item.status === 'available');
@@ -194,19 +193,8 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
       try {
         const map = await initializeMap(mapContainerRef.current, { center: BAHRAIN_CENTER, zoom: 12 });
         mapRef.current = map;
-        assignedMarkerRef.current = new window.google.maps.Marker({
-          map,
-          position: BAHRAIN_CENTER,
-          title: 'Assigned Driver',
-          icon: {
-            path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 5,
-            fillColor: '#4F46E5',
-            fillOpacity: 1,
-            strokeColor: '#ffffff',
-            strokeWeight: 1,
-          },
-        });
+        assignedMarkerRef.current = createMarker('#4F46E5', BAHRAIN_CENTER);
+        assignedMarkerRef.current.addTo(map);
       } catch (error) {
         console.error('Matching map init failed:', error);
       } finally {
@@ -216,8 +204,9 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
     void initMap();
     return () => {
       if (unTracking) unTracking();
-      availableMarkersRef.current.forEach((marker) => marker.setMap(null));
+      availableMarkersRef.current.forEach((marker) => marker.remove());
       availableMarkersRef.current.clear();
+      if (assignedMarkerRef.current) assignedMarkerRef.current.remove();
     };
   }, []);
 
@@ -278,28 +267,21 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
     : displayDriver;
   const availableDrivers = drivers.filter((driver) => driver.status === 'available');
   const filteredDrivers = availableDrivers
-    .filter((driver) => (areaFilter ? driver.area.toLowerCase().includes(areaFilter.toLowerCase()) : true))
+    .filter((driver) => {
+      // In AI mode, we strict filter by area
+      if (flowMode === 'ai' && areaFilter) {
+        return driver.area.toLowerCase().includes(areaFilter.toLowerCase()) || 
+               areaFilter.toLowerCase().includes(driver.area.toLowerCase());
+      }
+      // In manual mode, we show all (or respect the filter if the user wants, but here we show all as requested)
+      return true;
+    })
     .filter((driver) => driver.pricePerKm <= maxPriceFilter)
     .filter((driver) => driver.seats >= seatsFilter);
 
-  // في الوضع اليدوي، أضف سائق من منطقة أخرى إذا لم يكن موجود
-  const manualDrivers = flowMode === 'manual' ? (() => {
-    const areaDrivers = filteredDrivers;
-    const otherAreaDrivers = availableDrivers.filter(driver =>
-      !driver.area.toLowerCase().includes(areaFilter.toLowerCase()) &&
-      driver.pricePerKm <= maxPriceFilter &&
-      driver.seats >= seatsFilter
-    );
-
-    const result = [...areaDrivers];
-    if (otherAreaDrivers.length > 0 && result.length < 2) {
-      // أضف سائق واحد من منطقة أخرى
-      const randomOther = otherAreaDrivers[Math.floor(Math.random() * otherAreaDrivers.length)];
-      result.push(randomOther);
-    }
-    return result;
-  })() : filteredDrivers;
+  const manualDrivers = filteredDrivers;
   const hasAssignedDriver = Boolean(liveOrder?.assignedDriverId);
+  const realDrivers = drivers.filter(d => !DUMMY_DRIVERS.some(dummy => dummy.uid === d.uid));
 
   useEffect(() => {
     setFlowMode(matchingMode);
@@ -344,72 +326,74 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
       timeouts.push(window.setTimeout(async () => {
         if (ignore) return;
         try {
-          const nearest = await findNearestDrivers(pickupLoc, 1);
+          const pickupLoc = liveOrder?.pickupLocation || BAHRAIN_CENTER;
+          
+          // Use a local copy of drivers to avoid dependency issues
+          const availableDrivers = drivers.filter(d => d.status === 'available');
+          
+          const sorted = availableDrivers
+            .map(d => ({
+              driver: d,
+              distanceKm: calculateDistance(pickupLoc.lat, pickupLoc.lng, d.currentLocation?.lat || 26.2, d.currentLocation?.lng || 50.6)
+            }))
+            .sort((a, b) => a.distanceKm - b.distanceKm);
+
           const visitedNodes = Math.floor(Math.random() * 8000) + 4500;
 
-          if (nearest.length > 0) {
-            const nearestDriverData = nearest[0];
-            const localDriver = drivers.find((item) => item.uid === nearestDriverData.driver.driverId);
-            const recommendedDriver: DriverData = localDriver
-              ? { ...localDriver, distanceKm: nearestDriverData.distanceKm }
-              : {
-                  uid: nearestDriverData.driver.driverId,
-                  name: nearestDriverData.driver.name,
-                  rating: nearestDriverData.driver.rating ?? 4.8,
-                  totalTrips: nearestDriverData.driver.totalTrips ?? 0,
-                  vehicleType: nearestDriverData.driver.carType || 'Car',
-                  vehiclePlate: '',
-                  phone: nearestDriverData.driver.phone || '',
-                  status: nearestDriverData.driver.status,
-                  currentLocation: nearestDriverData.driver.currentLocation,
-                  seats: Number((nearestDriverData.driver as any).seats ?? 4),
-                  pricePerKm: Number((nearestDriverData.driver as any).pricePerKm ?? 2.5),
-                  area: String((nearestDriverData.driver as any).area ?? areaFilter),
-                  distanceKm: nearestDriverData.distanceKm,
-                };
+          if (sorted.length > 0) {
+            const recommendedDriver = sorted[0].driver;
+            const dist = sorted[0].distanceKm;
 
             setAiRecommendation([recommendedDriver]);
             setAiAlgorithmStats({
               visitedNodes,
-              distanceKm: nearestDriverData.distanceKm,
+              distanceKm: dist,
               driverName: recommendedDriver.name,
               found: true,
             });
-            setAiSearchMessage(`Nearest driver found: ${recommendedDriver.name} (${recommendedDriver.distanceKm?.toFixed(1)} km)`);
+            setAiSearchMessage(`Nearest driver found: ${recommendedDriver.name} (${dist.toFixed(1)} km)`);
           } else {
-            const dummyNearest = DUMMY_DRIVERS
+            // Fallback to dummies that match the area
+            const areaDummies = DUMMY_DRIVERS.filter(d => 
+              !areaFilter || 
+              d.area.toLowerCase().includes(areaFilter.toLowerCase()) || 
+              areaFilter.toLowerCase().includes(d.area.toLowerCase())
+            );
+            
+            const dummyNearest = (areaDummies.length > 0 ? areaDummies : DUMMY_DRIVERS)
               .map((driver) => ({
                 driver,
                 distanceKm: calculateDistance(
                   pickupLoc.lat,
                   pickupLoc.lng,
-                  driver.currentLocation.lat,
-                  driver.currentLocation.lng,
+                  driver.currentLocation?.lat || 26.2,
+                  driver.currentLocation?.lng || 50.6,
                 ),
               }))
               .sort((a, b) => a.distanceKm - b.distanceKm);
 
             if (dummyNearest.length > 0) {
-              const recommendedDriver = { ...dummyNearest[0].driver, distanceKm: dummyNearest[0].distanceKm };
+              const recommendedDriver = { ...dummyNearest[0].driver };
+              const dist = dummyNearest[0].distanceKm;
+              
               setAiRecommendation([recommendedDriver]);
               setAiAlgorithmStats({
                 visitedNodes,
-                distanceKm: dummyNearest[0].distanceKm,
+                distanceKm: dist,
                 driverName: recommendedDriver.name,
                 found: true,
               });
-              setAiSearchMessage(`Demo driver matched: ${recommendedDriver.name} (${recommendedDriver.distanceKm?.toFixed(1)} km)`);
+              setAiSearchMessage(`Using test driver: ${recommendedDriver.name} (${dist.toFixed(1)} km)`);
             } else {
               setAiRecommendation([]);
               setAiAlgorithmStats({ visitedNodes, distanceKm: null, found: false });
-              setAiSearchMessage('No drivers available in this area right now.');
+              setAiSearchMessage('No drivers available right now.');
             }
           }
-        } catch (error) {
-          console.error('Failed to calculate AI recommendation:', error);
-          setAiRecommendation([]);
-          setAiSearchMessage('Error searching for a driver. Please try again.');
-          setAiAlgorithmStats({ visitedNodes: 0, distanceKm: null, found: false });
+        } catch (err) {
+          console.error('AI Search Crash:', err);
+          setAiSearchMessage('Search interrupted. Please try again.');
+          setAiSearching(false);
         } finally {
           if (!ignore) setAiSearching(false);
         }
@@ -422,11 +406,16 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
       ignore = true;
       timeouts.forEach(clearTimeout);
     };
-  }, [flowMode, liveOrder?.pickupLocation?.lat, liveOrder?.pickupLocation?.lng, drivers, areaFilter]);
+  }, [flowMode, liveOrder?.pickupLocation?.lat, liveOrder?.pickupLocation?.lng, areaFilter, drivers]);
 
   const handleSelectDriver = async (driver: DriverData) => {
     if (!orderId) {
-      setSelectionErrorMessage('No active order found. Please return and create a booking before selecting a driver.');
+      // Demo mode: Proceed even without an active order to show the tracking/payment flow
+      setActionLoading(true);
+      setTimeout(() => {
+        setActionLoading(false);
+        if (onDriverMatched) onDriverMatched(driver.name);
+      }, 800);
       return;
     }
     if (orderStatus !== 'pending') {
@@ -444,7 +433,7 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
       setDriverInfo(driver);
       alert('Driver selected. Waiting for driver acceptance.');
       if (onDriverMatched) {
-        onDriverMatched();
+        onDriverMatched(driver.name);
       }
     } catch (error) {
       console.error('Failed to select driver:', error);
@@ -470,8 +459,31 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
     }
   };
 
+  const simulateStatusChange = async (newStatus: string, tripStatus?: string) => {
+    if (!orderId) return;
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      const updates: any = { status: newStatus };
+      if (tripStatus) updates.tripStatus = tripStatus;
+      
+      // If accepting, ensure a driver is assigned if not already
+      if (newStatus === 'accepted' && !liveOrder?.assignedDriverId) {
+        updates.assignedDriverId = 'debug-driver-id';
+        updates.assignedDriverName = 'Debug Driver (Simulated)';
+        updates.assignedDriverPhone = '+973 1234 5678';
+      }
+
+      await updateDoc(orderRef, updates);
+      console.log(`Order ${orderId} simulated to ${newStatus}`);
+    } catch (err) {
+      console.error('Simulation failed:', err);
+    }
+  };
+
   return (
-    <div className="size-full bg-gray-50 flex flex-col">
+    <div className="size-full bg-gray-50 flex flex-col relative">
+      {/* Main Content Area */}
+
       {/* Header Section */}
       <div className="bg-gradient-to-r from-purple-600 to-blue-500 px-6 pt-6 pb-6 shadow-lg">
         <div className="flex items-center gap-4">
@@ -528,6 +540,7 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
                   Manual
                 </button>
               </div>
+
             </div>
 
             {flowMode === 'manual' && (
@@ -583,15 +596,23 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
                 <div key={driver.uid} className="bg-white rounded-2xl shadow-md p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-bold text-gray-800">{driver.name}</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-bold text-gray-800">{driver.name}</p>
+                        {(driver as any).isReal && (
+                          <span className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
+                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                            LIVE
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-500">{driver.vehicleType} • {driver.area}</p>
-                      <p className="text-xs text-gray-500">Seats: {driver.seats} • BD {driver.pricePerKm.toFixed(1)}/km</p>
+                      <p className="text-xs text-gray-500">Seats: {driver.seats || 4} • BD {(driver.pricePerKm || 0).toFixed(1)}/km</p>
                       {typeof driver.distanceKm === 'number' && (
                         <p className="text-xs text-purple-600 mt-1">Approx. {driver.distanceKm.toFixed(2)} km from pickup</p>
                       )}
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-gray-700 font-semibold">{driver.rating.toFixed(1)} ⭐</p>
+                      <p className="text-sm text-gray-700 font-semibold">{(driver.rating || 5).toFixed(1)} ⭐</p>
                       <a href={`tel:${driver.phone}`} className="text-xs text-blue-600 underline">
                         {driver.phone || 'No phone'}
                       </a>
@@ -599,7 +620,7 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
                   </div>
                   <div className="mt-3 flex gap-2">
                     <button
-                      disabled={actionLoading || !driver.phone || orderStatus !== 'pending'}
+                      disabled={actionLoading || !driver.phone}
                       onClick={() => void handleSelectDriver(driver)}
                       className="flex-1 py-2 bg-gradient-to-r from-purple-600 to-blue-500 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
                     >
@@ -615,9 +636,9 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
                 </div>
               ))}
 
-              {(flowMode === 'ai' ? aiRecommendation.length === 0 : filteredDrivers.length === 0) && (
+              {realDrivers.length === 0 && (
                 <div className="bg-white rounded-2xl shadow-md p-6 text-center text-gray-600">
-                  No matching drivers with current filters.
+                  No real drivers found in database. Showing test drivers.
                 </div>
               )}
             </div>
@@ -702,7 +723,10 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
                     <p className="text-xl font-bold text-purple-600">3 min</p>
                   </div>
                 </div>
-                <button className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors text-sm">
+                <button 
+                  onClick={() => onDriverMatched?.(matchedDriver?.name || 'Assigned Driver')}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors text-sm"
+                >
                   Track Live
                 </button>
               </div>
@@ -779,7 +803,7 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
       </div>
 
       {/* Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 z-[1001]">
         <div className="max-w-md mx-auto flex justify-around items-center">
           <button className="flex flex-col items-center text-purple-600 transition-colors">
             <Home className="w-6 h-6 mb-1" />

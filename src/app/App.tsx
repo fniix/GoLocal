@@ -5,6 +5,8 @@ import {
   createOrder,
   listenToUserProfile,
   updateUserProfile,
+  setDriverOffline,
+  listenOrderById,
 } from '../services/firebaseService';
 import { LoginScreen } from './components/LoginScreen';
 import { RegisterScreenWithRoles } from './components/RegisterScreenWithRoles';
@@ -12,8 +14,9 @@ import { HomeScreen } from './components/HomeScreen';
 import { ServiceSelectionScreen } from './components/ServiceSelectionScreen';
 import { BookingDetailsScreen } from './components/BookingDetailsScreen';
 import { DriverMatchingScreen } from './components/DriverMatchingScreen';
-import { LiveTrackingScreen } from './components/LiveTrackingScreen';
 import { PaymentScreen } from './components/PaymentScreen';
+import { LiveTrackingScreen } from './components/LiveTrackingScreen';
+import { SmartPaymentScreen } from './components/SmartPaymentScreen';
 import { RatingScreen } from './components/RatingScreen';
 import { RideHistoryScreen } from './components/RideHistoryScreen';
 import { ProfileScreen } from './components/ProfileScreen';
@@ -23,6 +26,7 @@ import { DriverDashboard } from './components/DriverDashboard';
 import { DriverProfile } from './components/DriverProfile';
 import { DriverSystemApp } from './components/driver-system/DriverSystemApp';
 import { AdminSystemApp } from './components/admin-system/AdminSystemApp';
+import { SplashScreen } from './components/SplashScreen';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'splash' | 'login' | 'register' | 'home' | 'search' | 'activity' | 'service-selection' | 'booking-details' | 'driver-matching' | 'live-tracking' | 'payment' | 'rating' | 'ride-history' | 'profile' | 'driver-dashboard' | 'driver-profile' | 'driver-system' | 'admin-system'>('splash');
@@ -42,6 +46,7 @@ export default function App() {
     dropoffLocation: { lat: 26.0667, lng: 50.5577 },
   });
   const [selectedDestination, setSelectedDestination] = useState<{ location: string; area?: string } | null>(null);
+  const [selectedDriverName, setSelectedDriverName] = useState<string>('Ahmed Al-Khalifa');
   
   // Driver-specific state
   const [isDriver, setIsDriver] = useState<boolean>(false);
@@ -111,7 +116,33 @@ export default function App() {
     };
   }, []);
 
-  const handleLogout = () => {
+  useEffect(() => {
+    if (!activeOrderId) return;
+    const unsubscribe = listenOrderById(activeOrderId, (order) => {
+      if (!order) return;
+      if (order.status === 'completed' && currentScreen !== 'payment') {
+        setCurrentScreen('payment');
+      }
+      if (order.status === 'cancelled') {
+        setActiveOrderId(null);
+        setCurrentScreen('home');
+      }
+    }, (error) => {
+      console.error('App: listenOrderById error:', error);
+    });
+    return unsubscribe;
+  }, [activeOrderId, currentScreen]);
+
+  const handleLogout = async () => {
+    // Set driver offline if applicable
+    if (isDriver && currentUserId) {
+      try {
+        await setDriverOffline(currentUserId);
+      } catch (err) {
+        console.error('Failed to set driver offline:', err);
+      }
+    }
+
     // Clear all user data
     setUserName('');
     setUserCity('');
@@ -267,7 +298,7 @@ export default function App() {
     return (
       <RatingScreen 
         onBack={() => setCurrentScreen('payment')}
-        driverName="Ahmed Al-Khalifa"
+        driverName={selectedDriverName}
         driverPhoto="👨‍💼"
         driverRating={4.9}
         pickupLocation={bookingDetails.pickup}
@@ -280,11 +311,12 @@ export default function App() {
 
   if (currentScreen === 'payment') {
     return (
-      <PaymentScreen 
+      <SmartPaymentScreen 
         onBack={() => setCurrentScreen('live-tracking')}
+        orderId={activeOrderId}
         pickupLocation={bookingDetails.pickup}
         dropoffLocation={bookingDetails.dropoff}
-        driverName="Ahmed Al-Khalifa"
+        driverName={selectedDriverName}
         distance={5.2}
         duration={18}
         onPaymentComplete={() => setCurrentScreen('rating')}
@@ -296,7 +328,7 @@ export default function App() {
     return (
       <LiveTrackingScreen 
         onBack={() => setCurrentScreen('driver-matching')}
-        driverName="Ahmed Al-Khalifa"
+        driverName={selectedDriverName}
         pickupLocation={bookingDetails.pickup}
         dropoffLocation={bookingDetails.dropoff}
         orderId={activeOrderId}
@@ -311,7 +343,10 @@ export default function App() {
         onBack={() => setCurrentScreen('booking-details')}
         pickupLocation={bookingDetails.pickup}
         dropoffLocation={bookingDetails.dropoff}
-        onDriverMatched={() => setCurrentScreen('live-tracking')}
+        onDriverMatched={(name) => {
+          if (name) setSelectedDriverName(name);
+          setCurrentScreen('live-tracking');
+        }}
         userCity={userCity}
         orderId={activeOrderId}
         matchingMode={driverMatchMode}
@@ -474,40 +509,9 @@ export default function App() {
   }
 
   return (
-    <div className="w-screen h-screen flex items-center justify-center bg-gradient-to-b from-purple-600 to-blue-500">
-      <div className="flex flex-col items-center justify-between h-full w-full max-w-md px-6 py-12">
-        {/* Logo and Tagline Section */}
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="mb-8">
-            {/* Logo Circle */}
-            <div className="w-32 h-32 rounded-full bg-white flex items-center justify-center shadow-2xl overflow-hidden">
-              <img src="/logo.png" alt="GoLocal Logo" className="w-full h-full object-cover" />
-            </div>
-          </div>
-          
-          {/* Tagline */}
-          <p className="text-white text-2xl text-center mt-4 tracking-wide">
-            Your Local Ride, Anytime
-          </p>
-        </div>
-
-        {/* Buttons Section */}
-        <div className="w-full space-y-4">
-          <button 
-            onClick={() => setCurrentScreen('login')}
-            className="w-full bg-white text-purple-600 py-4 rounded-full text-xl font-semibold shadow-lg hover:shadow-xl transition-shadow"
-          >
-            Login
-          </button>
-          
-          <button 
-            onClick={() => setCurrentScreen('register')}
-            className="w-full bg-transparent border-2 border-white text-white py-4 rounded-full text-xl font-semibold hover:bg-white hover:text-purple-600 transition-all"
-          >
-            Create Account
-          </button>
-        </div>
-      </div>
-    </div>
+    <SplashScreen 
+      onLogin={() => setCurrentScreen('login')}
+      onCreateAccount={() => setCurrentScreen('register')}
+    />
   );
 }

@@ -1,5 +1,6 @@
-import { ArrowLeft, MapPin, Navigation, Clock, DollarSign, Truck, Car, ShoppingBag, Users, Home, Search, History, Bell, User } from 'lucide-react';
+import { ArrowLeft, MapPin, Navigation, Clock, Truck, Car, ShoppingBag, Users, Home, Search, History, Bell, User } from 'lucide-react';
 import { useState } from 'react';
+import { Footer } from './Footer';
 
 interface HomeScreenProps {
   onBack: () => void;
@@ -327,6 +328,17 @@ export function HomeScreen({ onBack, userName, userCity = 'manama', onSelectServ
             </button>
           </div>
         </div>
+
+        {/* Footer */}
+        <Footer
+          role="user"
+          onNavigate={(screen) => {
+            if (screen === 'ride-history') onViewHistory();
+            else if (screen === 'service-selection') onSelectService('private-driver');
+            else if (screen === 'search') onViewSearch();
+            else if (screen === 'profile') onViewProfile();
+          }}
+        />
       </div>
 
       {/* Bottom Navigation Bar */}

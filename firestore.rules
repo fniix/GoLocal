@@ -5,88 +5,32 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
-    }
-
-    function isDriver() {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "driver";
-    }
-
     match /users/{userId} {
-      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
-      allow delete: if isAdmin();
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false;
     }
 
     match /drivers/{driverId} {
       allow read: if isSignedIn();
-      allow create: if isAdmin();
-      allow update: if isAdmin() || (isDriver() && request.auth.uid == driverId);
-      allow delete: if isAdmin();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && request.auth.uid == driverId;
+      allow delete: if false;
     }
 
     match /orders/{orderId} {
-      allow create: if isSignedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == "pending";
-
-      allow read: if isAdmin()
-        || (isSignedIn() && resource.data.userId == request.auth.uid)
-        || (isDriver() && (resource.data.status == "pending" || resource.data.assignedDriverId == request.auth.uid));
-
-      allow update: if isAdmin()
-        || (
-          isSignedIn()
-          && resource.data.userId == request.auth.uid
-          && resource.data.status == "pending"
-          && request.resource.data.status == "cancelled"
-        )
-        || (
-          isSignedIn()
-          && resource.data.userId == request.auth.uid
-          && resource.data.status == "pending"
-          && request.resource.data.status == "pending"
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            "assignedDriverId",
-            "assignedDriverName",
-            "assignedDriverPhone",
-            "updatedAt"
-          ])
-        )
-        || (
-          isDriver()
-          && (
-            (
-              resource.data.status == "pending"
-              && request.resource.data.status == "accepted"
-              && request.resource.data.assignedDriverId == request.auth.uid
-            )
-            || (
-              resource.data.assignedDriverId == request.auth.uid
-              && (
-                request.resource.data.status == "accepted"
-                || request.resource.data.status == "completed"
-                || request.resource.data.status == "cancelled"
-                || request.resource.data.status == "rejected"
-              )
-            )
-          )
-        );
-
-      allow delete: if isAdmin();
+      allow create: if isSignedIn();
+      allow read: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if false;
     }
 
     match /offers/{offerId} {
       allow read: if isSignedIn();
-      allow create: if isDriver() && request.resource.data.driverId == request.auth.uid;
-      allow update: if isAdmin() || (isDriver() && resource.data.driverId == request.auth.uid);
-      allow delete: if isAdmin() || (isDriver() && resource.data.driverId == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
   }
 }

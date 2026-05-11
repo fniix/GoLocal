@@ -20,6 +20,23 @@ import { auth } from "../firebase";
 export type UserRole = "user" | "driver" | "admin";
 export type DriverStatus = "available" | "busy" | "offline";
 export type OrderStatus = "pending" | "accepted" | "rejected" | "completed" | "cancelled";
+export type TripStatus =
+  | "pending"
+  | "driver_heading"
+  | "driver_arrived"
+  | "passenger_boarded"
+  | "in_progress"
+  | "completed"
+  | "paid"
+  | "cancelled";
+
+export interface TripStatusEvent {
+  status: TripStatus;
+  timestamp: unknown;
+  updatedBy: "driver" | "passenger" | "admin";
+  note?: string;
+}
+
 
 export interface OfferData {
   offerId: string;
@@ -53,10 +70,15 @@ export interface DriverData {
   name: string;
   phone: string;
   carType: string;
-  status: DriverStatus;
-  currentLocation: { lat: number; lng: number };
+  status: DriverStatus | "pending" | "approved";
+  available: boolean;
+  online: boolean;
+  currentLocation: { lat: number; lng: number } | null;
+  area?: string;
   rating?: number;
   totalTrips?: number;
+  totalRides?: number;
+  totalEarnings?: number;
   createdAt?: unknown;
   lastUpdatedAt?: unknown;
 }
@@ -74,8 +96,14 @@ export interface OrderData {
   assignedDriverName: string | null;
   assignedDriverPhone: string | null;
   status: OrderStatus;
+  tripStatus?: TripStatus;
+  tripStatusHistory?: TripStatusEvent[];
+  paymentStatus?: "pending" | "paid";
+  paymentMethod?: "cash" | "card" | "wallet";
+  paymentAmount?: number;
   createdAt?: unknown;
 }
+
 
 type Unsubscribe = () => void;
 
@@ -95,13 +123,18 @@ const mapDriver = (id: string, data: any): DriverData => ({
   name: data?.name ?? "",
   phone: data?.phone ?? "",
   carType: data?.carType ?? data?.vehicleType ?? "",
-  status: (data?.status ?? "offline") as DriverStatus,
-  currentLocation: {
-    lat: data?.currentLocation?.lat ?? 26.2235,
-    lng: data?.currentLocation?.lng ?? 50.5876,
-  },
+  status: (data?.status ?? "pending") as DriverStatus,
+  available: data?.available ?? false,
+  online: data?.online ?? false,
+  area: data?.area ?? "",
+  currentLocation: data?.currentLocation ? {
+    lat: data.currentLocation.lat,
+    lng: data.currentLocation.lng,
+  } : null,
   rating: data?.rating ?? 0,
   totalTrips: data?.totalTrips ?? 0,
+  totalRides: data?.totalRides ?? data?.totalTrips ?? 0,
+  totalEarnings: data?.totalEarnings ?? 0,
   createdAt: data?.createdAt,
   lastUpdatedAt: data?.lastUpdatedAt,
 });
@@ -154,21 +187,28 @@ export async function createUserProfile(input: {
 export async function createDriverProfile(input: {
   driverId: string;
   name: string;
+  email?: string;
   phone: string;
   carType: string;
-  status?: DriverStatus;
-  currentLocation?: { lat: number; lng: number };
+  area?: string;
+  status?: DriverStatus | "pending" | "approved";
+  currentLocation?: { lat: number; lng: number } | null;
 }) {
   const driverRef = doc(db, "drivers", input.driverId);
   await setDoc(driverRef, {
     driverId: input.driverId,
     name: input.name,
+    email: input.email ?? "",
     phone: input.phone,
     carType: input.carType,
-    status: input.status ?? "offline",
-    currentLocation: input.currentLocation ?? { lat: 26.2235, lng: 50.5876 },
+    area: input.area ?? "",
+    status: input.status ?? "pending",
+    available: false,
+    online: false,
+    currentLocation: input.currentLocation ?? null,
     rating: 0,
-    totalTrips: 0,
+    totalRides: 0,
+    totalEarnings: 0,
     createdAt: serverTimestamp(),
   });
 }
@@ -223,7 +263,7 @@ export function listenToDrivers(
   onData: (drivers: DriverData[]) => void,
   onError?: (error: unknown) => void,
 ): Unsubscribe {
-  const driversQuery = query(collection(db, "drivers"), orderBy("createdAt", "desc"));
+  const driversQuery = query(collection(db, "drivers"));
   return onSnapshot(
     driversQuery,
     (snapshot) => {
@@ -235,7 +275,22 @@ export function listenToDrivers(
 }
 
 export async function updateDriverStatus(driverId: string, status: DriverStatus) {
-  await updateDoc(doc(db, "drivers", driverId), { status });
+  const isAvailable = status === 'available';
+  await updateDoc(doc(db, "drivers", driverId), { 
+    status,
+    available: isAvailable,
+    online: status !== 'offline',
+    lastUpdatedAt: serverTimestamp(),
+  });
+}
+
+export async function setDriverOffline(driverId: string) {
+  await updateDoc(doc(db, "drivers", driverId), { 
+    online: false,
+    available: false,
+    status: "offline",
+    lastUpdatedAt: serverTimestamp(),
+  });
 }
 
 export async function deleteDriver(driverId: string) {
@@ -432,7 +487,7 @@ export function listenForPendingOrders(
   const ordersQuery = query(
     collection(db, "orders"),
     where("status", "==", "pending"),
-    orderBy("createdAt", "desc"),
+    where("assignedDriverId", "==", null),
     limit(50),
   );
   return onSnapshot(
@@ -444,11 +499,24 @@ export function listenForPendingOrders(
   );
 }
 
-export function listenPendingOrdersForDrivers(
+export function listenForAssignedPendingOrders(
+  driverId: string,
   onData: (orders: OrderData[]) => void,
   onError?: (error: unknown) => void,
 ): Unsubscribe {
-  return listenForPendingOrders(onData, onError);
+  const ordersQuery = query(
+    collection(db, "orders"),
+    where("status", "==", "pending"),
+    where("assignedDriverId", "==", driverId),
+    limit(10),
+  );
+  return onSnapshot(
+    ordersQuery,
+    (snapshot) => {
+      onData(snapshot.docs.map((item) => mapOrder(item.id, item.data())));
+    },
+    onError,
+  );
 }
 
 export function listenForDriverOrders(
@@ -459,7 +527,6 @@ export function listenForDriverOrders(
   const ordersQuery = query(
     collection(db, "orders"),
     where("assignedDriverId", "==", driverId),
-    orderBy("createdAt", "desc"),
     limit(20),
   );
   return onSnapshot(
@@ -483,11 +550,18 @@ export function listenForAllUsers(
   onData: (users: UserData[]) => void,
   onError?: (error: unknown) => void,
 ): Unsubscribe {
-  const usersQuery = query(collection(db, "users"), orderBy("createdAt", "desc"));
+  const usersQuery = query(collection(db, "users"));
   return onSnapshot(
     usersQuery,
     (snapshot) => {
-      onData(snapshot.docs.map((item) => mapUser(item.id, item.data())));
+      const users = snapshot.docs.map((item) => mapUser(item.id, item.data()));
+      // Sort in memory to avoid excluding docs missing the createdAt field
+      users.sort((a, b) => {
+        const timeA = (a.createdAt as any)?.toMillis?.() || 0;
+        const timeB = (b.createdAt as any)?.toMillis?.() || 0;
+        return timeB - timeA;
+      });
+      onData(users);
     },
     onError,
   );
@@ -497,11 +571,18 @@ export function listenForAllDrivers(
   onData: (drivers: DriverData[]) => void,
   onError?: (error: unknown) => void,
 ): Unsubscribe {
-  const driversQuery = query(collection(db, "drivers"), orderBy("createdAt", "desc"));
+  const driversQuery = query(collection(db, "drivers"));
   return onSnapshot(
     driversQuery,
     (snapshot) => {
-      onData(snapshot.docs.map((item) => mapDriver(item.id, item.data())));
+      const drivers = snapshot.docs.map((item) => mapDriver(item.id, item.data()));
+      // Sort in memory to avoid excluding docs missing the createdAt field
+      drivers.sort((a, b) => {
+        const timeA = (a.createdAt as any)?.toMillis?.() || 0;
+        const timeB = (b.createdAt as any)?.toMillis?.() || 0;
+        return timeB - timeA;
+      });
+      onData(drivers);
     },
     onError,
   );
@@ -570,4 +651,74 @@ export async function getAllUsers(): Promise<UserData[]> {
 
 export async function getDriversByCity(_city: string) {
   return fetchDrivers();
+}
+
+// ─── Trip Status Tracking ────────────────────────────────────────────────────
+
+export async function updateTripStatus(
+  orderId: string,
+  status: TripStatus,
+  updatedBy: "driver" | "passenger" | "admin",
+  note?: string,
+) {
+  const event: Omit<TripStatusEvent, "timestamp"> & { timestamp: unknown } = {
+    status,
+    timestamp: serverTimestamp(),
+    updatedBy,
+    ...(note ? { note } : {}),
+  };
+  const orderRef = doc(db, "orders", orderId);
+  const snap = await getDoc(orderRef);
+  const existing: TripStatusEvent[] = snap.data()?.tripStatusHistory ?? [];
+  await updateDoc(orderRef, {
+    tripStatus: status,
+    tripStatusHistory: [...existing, event],
+    ...(status === "completed" ? { status: "completed" } : {}),
+  });
+}
+
+export function listenOrderTripStatus(
+  orderId: string,
+  onData: (order: OrderData | null) => void,
+  onError?: (error: unknown) => void,
+): () => void {
+  return onSnapshot(
+    doc(db, "orders", orderId),
+    (snap) => {
+      if (!snap.exists()) { onData(null); return; }
+      onData(mapOrder(snap.id, snap.data()));
+    },
+    onError,
+  );
+}
+
+export async function recordPayment(
+  orderId: string,
+  method: "cash" | "card" | "wallet",
+  amount: number,
+) {
+  await updateDoc(doc(db, "orders", orderId), {
+    paymentStatus: "paid",
+    paymentMethod: method,
+    paymentAmount: amount,
+    tripStatus: "paid",
+    status: "completed",
+  });
+}
+
+export function listenAllActiveTrips(
+  onData: (orders: OrderData[]) => void,
+  onError?: (error: unknown) => void,
+): () => void {
+  const q = query(
+    collection(db, "orders"),
+    where("status", "in", ["accepted", "completed"]),
+    orderBy("createdAt", "desc"),
+    limit(50),
+  );
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map((d) => mapOrder(d.id, d.data()))),
+    onError,
+  );
 }

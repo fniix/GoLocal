@@ -52,11 +52,12 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
 
   const filteredUsers = users.filter((user) => {
     const q = searchQuery.toLowerCase();
-    return (
+    const matchesSearch = (
       user.name.toLowerCase().includes(q) ||
       user.email.toLowerCase().includes(q) ||
       user.id.toLowerCase().includes(q)
     );
+    return matchesSearch;
   });
 
   const openEditModal = (user: UserRow) => {
@@ -116,7 +117,7 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
         <main className="flex-1 overflow-y-auto p-8">
           <div className="mb-8">
             <h1 className="text-4xl font-bold text-gray-800 mb-2">Users Management</h1>
-            <p className="text-gray-500 text-lg">Real-time users list from Firestore</p>
+            <p className="text-gray-500 text-lg">Managing customer accounts and profiles</p>
           </div>
 
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
@@ -161,7 +162,11 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
                         <td className="px-6 py-4">{user.email}</td>
                         <td className="px-6 py-4">{user.phone}</td>
                         <td className="px-6 py-4">
-                          <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                            user.role === 'driver' ? 'bg-amber-100 text-amber-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
                             {user.role}
                           </span>
                         </td>
@@ -216,11 +221,10 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
               <select
                 value={editForm.role}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, role: e.target.value as 'user' | 'driver' | 'admin' }))}
-                className="w-full px-4 py-3 border rounded-xl"
+                className="w-full px-4 py-3 border rounded-xl bg-gray-50 cursor-not-allowed"
+                disabled
               >
                 <option value="user">user</option>
-                <option value="driver">driver</option>
-                <option value="admin">admin</option>
               </select>
             </div>
             <div className="flex gap-3 mt-6">

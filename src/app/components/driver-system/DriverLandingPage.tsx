@@ -4,7 +4,7 @@ interface DriverLandingPageProps {
 
 export function DriverLandingPage({ onEnterSystem }: DriverLandingPageProps) {
   return (
-    <div className="size-full bg-gradient-to-br from-purple-600 via-blue-500 to-purple-700 flex items-center justify-center">
+    <div className="min-h-screen w-full bg-gradient-to-br from-purple-600 via-blue-500 to-purple-700 flex items-center justify-center">
       <div className="max-w-4xl w-full mx-auto px-8 text-center">
         {/* Logo */}
         <div className="flex justify-center mb-8">

@@ -23,7 +23,7 @@ export function AdminTrips({ onNavigate }: AdminTripsProps) {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [newStatus, setNewStatus] = useState<'pending' | 'accepted' | 'completed' | 'cancelled'>('pending');
-  
+
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -105,41 +105,37 @@ export function AdminTrips({ onNavigate }: AdminTripsProps) {
           <div className="flex gap-3 mb-6">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-                activeTab === 'pending'
-                  ? 'bg-gradient-to-r from-[#6C5CE7] to-[#A29BFE] text-white shadow-md'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-              }`}
+              className={`px-6 py-3 rounded-xl font-semibold transition-all ${activeTab === 'pending'
+                ? 'bg-gradient-to-r from-[#6C5CE7] to-[#A29BFE] text-white shadow-md'
+                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                }`}
             >
               Pending ({pendingCount})
             </button>
             <button
               onClick={() => setActiveTab('accepted')}
-              className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-                activeTab === 'accepted'
-                  ? 'bg-gradient-to-r from-[#6C5CE7] to-[#A29BFE] text-white shadow-md'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-              }`}
+              className={`px-6 py-3 rounded-xl font-semibold transition-all ${activeTab === 'accepted'
+                ? 'bg-gradient-to-r from-[#6C5CE7] to-[#A29BFE] text-white shadow-md'
+                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                }`}
             >
               Accepted ({acceptedCount})
             </button>
             <button
               onClick={() => setActiveTab('completed')}
-              className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-                activeTab === 'completed'
-                  ? 'bg-gradient-to-r from-[#6C5CE7] to-[#A29BFE] text-white shadow-md'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-              }`}
+              className={`px-6 py-3 rounded-xl font-semibold transition-all ${activeTab === 'completed'
+                ? 'bg-gradient-to-r from-[#6C5CE7] to-[#A29BFE] text-white shadow-md'
+                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                }`}
             >
               Completed ({completedCount})
             </button>
             <button
               onClick={() => setActiveTab('cancelled')}
-              className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-                activeTab === 'cancelled'
-                  ? 'bg-gradient-to-r from-[#6C5CE7] to-[#A29BFE] text-white shadow-md'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-              }`}
+              className={`px-6 py-3 rounded-xl font-semibold transition-all ${activeTab === 'cancelled'
+                ? 'bg-gradient-to-r from-[#6C5CE7] to-[#A29BFE] text-white shadow-md'
+                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                }`}
             >
               Cancelled ({cancelledCount})
             </button>
@@ -213,7 +209,7 @@ export function AdminTrips({ onNavigate }: AdminTripsProps) {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button 
+                          <button
                             onClick={() => handleStatusChange(trip)}
                             className="px-3 py-2 text-xs font-semibold text-purple-600 hover:bg-purple-50 rounded-lg transition-colors flex items-center gap-1"
                           >
@@ -251,7 +247,7 @@ export function AdminTrips({ onNavigate }: AdminTripsProps) {
             <p className="text-gray-600 mb-6">
               Update status for order <span className="font-semibold">{selectedTrip?.id}</span>
             </p>
-            
+
             <div className="mb-6">
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Select Status

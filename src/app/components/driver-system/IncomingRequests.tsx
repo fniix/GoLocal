@@ -1,6 +1,8 @@
-import { Home, FileText, Inbox, Truck, DollarSign, Star, User, Check, X, Clock, MapPin } from 'lucide-react';
+import { Inbox, Check, X, Clock, MapPin, Star, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { acceptOrder, listenPendingOrdersForDrivers, rejectOrder } from '../../../services/firebaseService';
+import { auth } from '../../../firebase';
+import { acceptOrder, listenForPendingOrders, listenForAssignedPendingOrders, rejectOrder } from '../../../services/firebaseService';
+import { DriverSidebar } from './DriverSidebar';
 
 interface IncomingRequestsProps {
   onNavigateToDashboard: () => void;
@@ -42,32 +44,63 @@ export function IncomingRequests({
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const unsubscribe = listenPendingOrdersForDrivers(
+    const userId = auth.currentUser?.uid;
+    
+    // Listen to general pending orders (not assigned to anyone)
+    const unPublic = listenForPendingOrders(
       (orders) => {
-        const mappedRequests: Request[] = orders.map((order) => ({
-          id: order.orderId,
-          customerName: order.userName || 'User',
-          fromCity: order.pickupAddress || 'Pickup',
-          fromArea: `Lat ${order.pickupLocation.lat.toFixed(3)}, Lng ${order.pickupLocation.lng.toFixed(3)}`,
-          toCity: order.dropoffAddress || 'Dropoff',
-          toArea: `Lat ${order.dropoffLocation.lat.toFixed(3)}, Lng ${order.dropoffLocation.lng.toFixed(3)}`,
-          description: `Order from ${order.userPhone} • ${order.createdAt ? 'Live now' : ''}`,
-          suggestedPrice: 0,
-          timeRemaining: 300,
-          serviceType: 'Ride',
-          customerRating: 5,
-        }));
-        setRequests(mappedRequests);
-        setLoading(false);
+        setPublicOrders(orders);
       },
-      (snapshotError) => {
-        console.error('Error loading pending orders:', snapshotError);
-        setError('Unable to load incoming requests.');
-        setLoading(false);
-      }
+      (err) => console.error('Public orders error:', err)
     );
-    return unsubscribe;
+
+    // Listen to orders assigned specifically to this driver
+    let unPrivate = () => {};
+    if (userId) {
+      unPrivate = listenForAssignedPendingOrders(
+        userId,
+        (orders) => {
+          setPrivateOrders(orders);
+        },
+        (err) => console.error('Private orders error:', err)
+      );
+    }
+
+    return () => {
+      unPublic();
+      unPrivate();
+    };
   }, []);
+
+  const [publicOrders, setPublicOrders] = useState<any[]>([]);
+  const [privateOrders, setPrivateOrders] = useState<any[]>([]);
+
+  useEffect(() => {
+    const allOrders = [...privateOrders, ...publicOrders];
+    const mappedRequests: Request[] = allOrders.map((order) => {
+      const isDirect = !!order.assignedDriverId;
+      // Calculate a dummy price to look realistic
+      const mockPrice = 3.5 + Math.random() * 4;
+      
+      return {
+        id: order.orderId,
+        customerName: order.userName || 'User',
+        fromCity: order.pickupAddress || 'Pickup Location',
+        fromArea: `Lat ${order.pickupLocation?.lat?.toFixed(3) || 0}, Lng ${order.pickupLocation?.lng?.toFixed(3) || 0}`,
+        toCity: order.dropoffAddress || 'Dropoff Location',
+        toArea: `Lat ${order.dropoffLocation?.lat?.toFixed(3) || 0}, Lng ${order.dropoffLocation?.lng?.toFixed(3) || 0}`,
+        description: isDirect ? '★ DIRECT REQUEST ★ Order from ' + order.userPhone : '⚡ OPEN POOL - FIRST TO ACCEPT WINS! ⚡',
+        suggestedPrice: mockPrice,
+        timeRemaining: isDirect ? 60 : 30, // 30 seconds for public pool to induce urgency!
+        serviceType: isDirect ? 'Priority Ride' : 'Public Request',
+        customerRating: 4.5 + Math.random() * 0.5,
+      };
+    });
+    
+    // Sort so public (open pool) requests that are newest are on top
+    setRequests(mappedRequests.sort((a, b) => a.timeRemaining - b.timeRemaining));
+    setLoading(false);
+  }, [publicOrders, privateOrders]);
 
   // Countdown timer effect
   useEffect(() => {
@@ -113,106 +146,28 @@ export function IncomingRequests({
   };
 
   return (
-    <div className="size-full flex bg-slate-50 text-slate-900 transition-colors duration-300">
-      {/* Fixed Left Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-purple-600 to-blue-600 text-white flex-shrink-0 flex flex-col">
-        {/* Logo */}
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-lg overflow-hidden">
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg">Driver System</h2>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation Menu */}
-        <nav className="flex-1 py-6 overflow-y-auto">
-          <button 
-            onClick={onNavigateToDashboard}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Home className="w-5 h-5" />
-            Dashboard
-          </button>
-          
-          <button 
-            onClick={onNavigateToMyOffers}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <FileText className="w-5 h-5" />
-            My Offers
-          </button>
-          
-          <button className="w-full px-6 py-3 flex items-center gap-3 bg-white/10 border-l-4 border-white text-white font-semibold">
-            <Inbox className="w-5 h-5" />
-            Incoming Requests
-            {requests.length > 0 && (
-              <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                {requests.length}
-              </span>
-            )}
-          </button>
-          
-          <button 
-            onClick={onNavigateToActiveDeliveries}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Truck className="w-5 h-5" />
-            Active Deliveries
-            <span className="ml-auto bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">2</span>
-          </button>
-          
-          <button 
-            onClick={onNavigateToEarnings}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <DollarSign className="w-5 h-5" />
-            Earnings
-          </button>
-          
-          <button 
-            onClick={onNavigateToReviews}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <Star className="w-5 h-5" />
-            Reviews
-          </button>
-          
-          <button 
-            onClick={onNavigateToProfile}
-            className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          >
-            <User className="w-5 h-5" />
-            Profile
-          </button>
-        </nav>
-
-        {/* Footer */}
-        <div className="p-6 border-t border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <User className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">Driver</p>
-              <p className="text-xs text-white/70">Ahmed Al-Khalifa</p>
-            </div>
-          </div>
-        </div>
-      </aside>
+    <div className="size-full flex bg-slate-50 text-slate-900">
+      <DriverSidebar
+        activePage="incoming-requests"
+        onNavigateToDashboard={onNavigateToDashboard}
+        onNavigateToMyOffers={onNavigateToMyOffers}
+        onNavigateToIncomingRequests={() => {}}
+        onNavigateToActiveDeliveries={onNavigateToActiveDeliveries}
+        onNavigateToEarnings={onNavigateToEarnings}
+        onNavigateToReviews={onNavigateToReviews}
+        onNavigateToProfile={onNavigateToProfile}
+        pendingRequestsCount={requests.length}
+      />
 
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
         <header className="bg-white border-b border-slate-200 px-8 py-6 sticky top-0 z-10 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900">Incoming Requests</h1>
+              <h1 className="text-3xl font-bold text-slate-900">Live Radar</h1>
               <p className="text-slate-500 mt-1">
                 {driverStatus === 'available' 
-                  ? `${requests.length} pending requests`
+                  ? `Broadcasting to all drivers... ${requests.length} pending requests`
                   : 'Set status to Available to receive requests'}
               </p>
             </div>
@@ -255,23 +210,29 @@ export function IncomingRequests({
               <h3 className="text-xl font-bold text-gray-800 mb-2">Loading incoming requests...</h3>
               <p className="text-gray-500">Listening for pending orders in real-time.</p>
             </div>
-          ) : error ? (
+          ) : error && requests.length === 0 ? (
             <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-6 mb-6">
               <h3 className="font-bold text-red-900 text-lg mb-1">Failed to load requests</h3>
               <p className="text-red-800 text-sm">{error}</p>
             </div>
-          ) : driverStatus === 'available' && requests.length > 0 ? (
+          ) : (driverStatus === 'available' || requests.length > 0) ? (
             <div className="space-y-4">
               {requests.map((request) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:border-purple-400/50 transition-all"
+                  className={`bg-white rounded-2xl shadow-sm border overflow-hidden transition-all ${
+                    request.serviceType === 'Public Request'
+                      ? 'border-blue-400 shadow-blue-100 hover:shadow-blue-200 animate-pulse-slow'
+                      : 'border-slate-200 hover:border-purple-400/50'
+                  }`}
                 >
                   {/* Timer Bar */}
                   <div className="bg-gradient-to-r from-red-500 to-orange-500 px-6 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-white">
-                      <Clock className="w-5 h-5" />
-                      <span className="font-semibold">Time Remaining:</span>
+                      <Clock className={`w-5 h-5 ${request.timeRemaining < 10 ? 'animate-bounce text-yellow-300' : ''}`} />
+                      <span className="font-semibold">
+                        {request.serviceType === 'Public Request' ? '⚡ Open Pool Expires In:' : 'Time Remaining:'}
+                      </span>
                     </div>
                     <span className="text-white font-bold text-xl">
                       {formatTime(request.timeRemaining)}
