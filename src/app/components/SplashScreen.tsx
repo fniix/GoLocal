@@ -4,6 +4,7 @@ import Waves from './ui/Waves';
 interface SplashScreenProps {
   onLogin: () => void;
   onCreateAccount: () => void;
+
 }
 
 export function SplashScreen({ onLogin, onCreateAccount }: SplashScreenProps) {
@@ -66,6 +67,8 @@ export function SplashScreen({ onLogin, onCreateAccount }: SplashScreenProps) {
           >
             Create Account
           </button>
+
+
         </div>
       </div>
     </div>

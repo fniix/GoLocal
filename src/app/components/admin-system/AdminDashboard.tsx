@@ -222,21 +222,21 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   return (
-    <div className="size-full flex bg-gradient-to-br from-gray-50 to-blue-50/30">
+    <div className="size-full flex bg-[#F8FAFF]">
       <AdminSidebar activePage="dashboard" onNavigate={onNavigate} />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <AdminTopBar />
 
-        <main className="flex-1 overflow-y-auto p-8">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-8">
           {/* Page Header */}
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">Dashboard</h1>
-            <p className="text-gray-500 text-lg font-normal">Welcome back, Admin GoLocal</p>
+          <div className="mb-6 lg:mb-8">
+            <h1 className="text-2xl lg:text-4xl font-bold text-gray-800 mb-1">Dashboard</h1>
+            <p className="text-gray-500 text-sm lg:text-lg font-normal">Welcome back, Admin GoLocal</p>
           </div>
 
           {/* Stats Cards with Sparklines */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
             {stats.map((stat, index) => (
               <div
                 key={index}

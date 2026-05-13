@@ -110,59 +110,64 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
   };
 
   return (
-    <div className="size-full flex bg-gradient-to-br from-gray-50 to-blue-50/30">
+    <div className="size-full flex bg-[#F8FAFF]">
       <AdminSidebar activePage="users" onNavigate={onNavigate} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <AdminTopBar />
-        <main className="flex-1 overflow-y-auto p-8">
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">Users Management</h1>
-            <p className="text-gray-500 text-lg">Managing customer accounts and profiles</p>
+        <main className="flex-1 overflow-y-auto p-4 lg:p-8">
+          <div className="mb-6 lg:mb-8">
+            <h1 className="text-2xl lg:text-4xl font-bold text-gray-800 mb-1 tracking-tight">Users Management</h1>
+            <p className="text-sm lg:text-lg text-gray-500 font-normal">Manage customer accounts and profiles</p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
+          <div className="bg-white rounded-2xl shadow-xl shadow-gray-100 border border-gray-100 p-4 lg:p-6 mb-6">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by name, email, or ID..."
-                className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#5B4FE5] focus:outline-none text-sm"
+                className="w-full pl-12 pr-4 py-3 rounded-xl border-2 border-gray-50 focus:border-[#6C5CE7] focus:outline-none text-sm font-medium transition-all"
               />
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-2xl lg:rounded-3xl shadow-xl shadow-gray-100 border border-gray-100 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Name</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Email</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Phone</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Role</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase">Created At</th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase">Actions</th>
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50/50 border-b border-gray-100">
+                    <th className="px-6 py-5 text-xs font-bold text-gray-400 uppercase tracking-widest">User Info</th>
+                    <th className="px-6 py-5 text-xs font-bold text-gray-400 uppercase tracking-widest hidden sm:table-cell">Contact</th>
+                    <th className="px-6 py-5 text-xs font-bold text-gray-400 uppercase tracking-widest">Role</th>
+                    <th className="px-6 py-5 text-xs font-bold text-gray-400 uppercase tracking-widest hidden lg:table-cell">Joined</th>
+                    <th className="px-6 py-5 text-xs font-bold text-gray-400 uppercase tracking-widest text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-50">
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-8 text-center text-gray-500">Loading users...</td>
+                      <td colSpan={5} className="px-6 py-12 text-center text-gray-500 font-medium">Loading users...</td>
                     </tr>
                   ) : filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-8 text-center text-gray-500">No users found.</td>
+                      <td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-medium italic">No users found matching your search.</td>
                     </tr>
                   ) : (
                     filteredUsers.map((user) => (
-                      <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4">{user.name}</td>
-                        <td className="px-6 py-4">{user.email}</td>
-                        <td className="px-6 py-4">{user.phone}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      <tr key={user.id} className="hover:bg-gray-50/50 transition-colors group">
+                        <td className="px-6 py-5">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-gray-800 text-[15px]">{user.name}</span>
+                            <span className="text-xs text-gray-400 font-medium">{user.email}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5 hidden sm:table-cell">
+                          <span className="text-sm text-gray-600 font-medium">{user.phone}</span>
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
                             user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
                             user.role === 'driver' ? 'bg-amber-100 text-amber-700' :
                             'bg-blue-100 text-blue-700'
@@ -170,24 +175,26 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
                             {user.role}
                           </span>
                         </td>
-                        <td className="px-6 py-4">{user.createdAt}</td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                        <td className="px-6 py-5 hidden lg:table-cell">
+                          <span className="text-xs text-gray-500 font-medium">{user.createdAt}</span>
+                        </td>
+                        <td className="px-6 py-5 text-right">
+                          <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => openEditModal(user)}
                               disabled={user.role === 'admin'}
-                              className="px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                              className="p-2 text-gray-400 hover:text-[#6C5CE7] hover:bg-indigo-50 rounded-xl transition-all disabled:opacity-30"
+                              title="Edit User"
                             >
-                              <Pencil className="w-3 h-3" />
-                              Edit
+                              <Pencil className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteUser(user.id)}
                               disabled={user.role === 'admin' || user.id === currentAdminUid}
-                              className="px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all disabled:opacity-30"
+                              title="Delete User"
                             >
-                              <Trash2 className="w-3 h-3" />
-                              Delete
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </td>
@@ -200,6 +207,7 @@ export function AdminUsers({ onNavigate }: AdminUsersProps) {
           </div>
         </main>
       </div>
+
 
       {editingUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

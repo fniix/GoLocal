@@ -21,16 +21,23 @@ export function AISearchAnimation({ isSearching, algorithmStats, searchMessage }
   const [playSuccess] = useSound(SUCCESS_SOUND, { volume: 0.6 });
 
   useEffect(() => {
-    if (isSearching) {
-      playScan();
-    } else {
-      stopScan();
-      if (algorithmStats?.found) {
-        playSuccess();
+    try {
+      console.log('[AISearch] isSearching state change:', isSearching);
+      if (isSearching) {
+        playScan();
+      } else {
+        stopScan();
+        if (algorithmStats?.found) {
+          playSuccess();
+        }
       }
+    } catch (err) {
+      console.error('[AISearch] Sound playback error:', err);
     }
     return () => {
-      stopScan();
+      try {
+        stopScan();
+      } catch (err) {}
     };
   }, [isSearching, algorithmStats?.found, playScan, stopScan, playSuccess]);
 
@@ -114,117 +121,125 @@ export function AISearchAnimation({ isSearching, algorithmStats, searchMessage }
 
     // حلقة الرسم
     const draw = () => {
-      ctx.clearRect(0, 0, width, height);
+      try {
+        ctx.clearRect(0, 0, width, height);
 
-      // رسم شبكة الشوارع الباهتة (الخريطة الخلفية)
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-      for (let i = 0; i < cols; i++) {
-        for (let j = 0; j < rows; j++) {
-          let node = grid[i][j];
-          for (let neighbor of node.neighbors) {
-            ctx.beginPath();
-            ctx.moveTo(node.x, node.y);
-            ctx.lineTo(neighbor.x, neighbor.y);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // محاكاة خوارزمية البحث أثناء الانتظار
-      if (isSearching && openSet.length > 0 && !isDone) {
-        // تسريع العرض بمعالجة عدة نقاط في الإطار الواحد
-        for (let k = 0; k < 6; k++) {
-          if (openSet.length === 0) break;
-
-          // خوارزمية A* (ترتيب حسب المسافة للهدف)
-          openSet.sort((a, b) => {
-            let distA = Math.hypot(a.x - end.x, a.y - end.y);
-            let distB = Math.hypot(b.x - end.x, b.y - end.y);
-            return distA - distB;
-          });
-
-          let current = openSet.shift();
-          closedSet.push(current);
-
-          if (current === end) {
-            isDone = true;
-          }
-
-          for (let neighbor of current.neighbors) {
-            if (!neighbor.visited) {
-              neighbor.visited = true;
-              neighbor.parent = current;
-              openSet.push(neighbor);
+        // رسم شبكة الشوارع الباهتة (الخريطة الخلفية)
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        for (let i = 0; i < cols; i++) {
+          for (let j = 0; j < rows; j++) {
+            let node = grid[i][j];
+            for (let neighbor of node.neighbors) {
+              ctx.beginPath();
+              ctx.moveTo(node.x, node.y);
+              ctx.lineTo(neighbor.x, neighbor.y);
+              ctx.stroke();
             }
           }
         }
-      }
 
-      // رسم المسارات المكتشفة (زرقاء)
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(0, 150, 255, 0.4)';
-      ctx.beginPath();
-      for (let i = 1; i < closedSet.length; i++) {
-        let node = closedSet[i];
-        if (node.parent) {
-          ctx.moveTo(node.x, node.y);
-          ctx.lineTo(node.parent.x, node.parent.y);
-        }
-      }
-      ctx.stroke();
+        // محاكاة خوارزمية البحث أثناء الانتظار
+        if (isSearching && openSet.length > 0 && !isDone) {
+          // تسريع العرض بمعالجة عدة نقاط في الإطار الواحد
+          for (let k = 0; k < 6; k++) {
+            if (openSet.length === 0) break;
 
-      // رسم النقطة الخضراء (البداية)
-      ctx.fillStyle = '#22c55e'; // green-500
-      ctx.beginPath();
-      ctx.arc(start.x, start.y, 6, 0, Math.PI * 2);
-      ctx.fill();
+            // خوارزمية A* (ترتيب حسب المسافة للهدف)
+            openSet.sort((a, b) => {
+              let distA = Math.hypot(a.x - (end?.x || 0), a.y - (end?.y || 0));
+              let distB = Math.hypot(b.x - (end?.x || 0), b.y - (end?.y || 0));
+              return distA - distB;
+            });
 
-      // رسم النقطة الحمراء (الهدف) في حال البحث
-      ctx.fillStyle = '#ef4444'; // red-500
-      ctx.beginPath();
-      ctx.arc(end.x, end.y, 6, 0, Math.PI * 2);
-      ctx.fill();
+            let current = openSet.shift();
+            closedSet.push(current);
 
-      // عند الانتهاء والنجاح في العثور على نتيجة
-      if (!isSearching && algorithmStats?.found) {
-        if (path.length === 0) {
-          // استخراج المسار من النهاية للبداية
-          let temp = end;
-          while (temp) {
-            path.push(temp);
-            temp = temp.parent;
+            if (current === end) {
+              isDone = true;
+            }
+
+            for (let neighbor of current.neighbors) {
+              if (!neighbor.visited) {
+                neighbor.visited = true;
+                neighbor.parent = current;
+                openSet.push(neighbor);
+              }
+            }
           }
         }
 
-        // رسم الخط الأصفر اللامع (المسار الأمثل)
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = '#eab308'; // yellow-500
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
+        // رسم المسارات المكتشفة (زرقاء)
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(0, 150, 255, 0.4)';
         ctx.beginPath();
-        if (path.length > 0) {
-          ctx.moveTo(path[0].x, path[0].y);
-          for (let i = 1; i < path.length; i++) {
-            ctx.lineTo(path[i].x, path[i].y);
+        for (let i = 1; i < closedSet.length; i++) {
+          let node = closedSet[i];
+          if (node.parent) {
+            ctx.moveTo(node.x, node.y);
+            ctx.lineTo(node.parent.x, node.parent.y);
           }
         }
         ctx.stroke();
 
-        // نقطة نهاية المسار صفراء (بدلاً من الحمراء)
-        ctx.fillStyle = '#eab308';
+        // رسم النقطة الخضراء (البداية)
+        ctx.fillStyle = '#22c55e'; // green-500
         ctx.beginPath();
-        ctx.arc(end.x, end.y, 8, 0, Math.PI * 2);
+        ctx.arc(start.x, start.y, 6, 0, Math.PI * 2);
         ctx.fill();
 
-        // تأثير توهج حول الهدف
-        ctx.fillStyle = 'rgba(234, 179, 8, 0.3)';
-        ctx.beginPath();
-        ctx.arc(end.x, end.y, 16, 0, Math.PI * 2);
-        ctx.fill();
+        // رسم النقطة الحمراء (الهدف) في حال البحث
+        if (end) {
+          ctx.fillStyle = '#ef4444'; // red-500
+          ctx.beginPath();
+          ctx.arc(end.x, end.y, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // عند الانتهاء والنجاح في العثور على نتيجة
+        if (!isSearching && algorithmStats?.found) {
+          if (path.length === 0 && end) {
+            // استخراج المسار من النهاية للبداية
+            let temp = end;
+            while (temp) {
+              path.push(temp);
+              temp = temp.parent;
+            }
+          }
+
+          // رسم الخط الأصفر اللامع (المسار الأمثل)
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = '#eab308'; // yellow-500
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          if (path.length > 0) {
+            ctx.moveTo(path[0].x, path[0].y);
+            for (let i = 1; i < path.length; i++) {
+              ctx.lineTo(path[i].x, path[i].y);
+            }
+          }
+          ctx.stroke();
+
+          // نقطة نهاية المسار صفراء (بدلاً من الحمراء)
+          if (end) {
+            ctx.fillStyle = '#eab308';
+            ctx.beginPath();
+            ctx.arc(end.x, end.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // تأثير توهج حول الهدف
+            ctx.fillStyle = 'rgba(234, 179, 8, 0.3)';
+            ctx.beginPath();
+            ctx.arc(end.x, end.y, 16, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        requestRef.current = requestAnimationFrame(draw);
+      } catch (err) {
+        console.error('[AISearch] Animation frame error:', err);
       }
-
-      requestRef.current = requestAnimationFrame(draw);
     };
 
     draw();
