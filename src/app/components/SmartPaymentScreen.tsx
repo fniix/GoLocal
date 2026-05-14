@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, CreditCard, Wallet, DollarSign, Shield, CheckCircle, Lock, Eye, EyeOff, X } from 'lucide-react';
+import { ArrowLeft, CreditCard, Wallet, DollarSign, Shield, CheckCircle, Lock, Eye, EyeOff, X, Home } from 'lucide-react';
 import { recordPayment } from '../../services/firebaseService';
 
 interface SmartPaymentScreenProps {
   onBack: () => void;
+  onNavigateHome?: () => void;
   orderId?: string | null;
   pickupLocation: string;
   dropoffLocation: string;
@@ -18,7 +19,7 @@ type Step = 'summary' | 'card-form' | 'otp' | 'processing' | 'success';
 const baseFare = 2.50;
 
 export function SmartPaymentScreen({
-  onBack, orderId, pickupLocation, dropoffLocation,
+  onBack, onNavigateHome, orderId, pickupLocation, dropoffLocation,
   driverName, distance, duration, onPaymentComplete,
 }: SmartPaymentScreenProps) {
   const [method, setMethod] = useState<'card' | 'wallet' | 'cash'>('card');
@@ -105,7 +106,17 @@ export function SmartPaymentScreen({
   // ── SUCCESS SCREEN ──────────────────────────────────────────────────────────
   if (step === 'success') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 via-purple-500 to-blue-500 flex flex-col items-center justify-center px-6 py-12">
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 via-purple-500 to-blue-500 flex flex-col items-center justify-center px-6 py-12 relative">
+        {onNavigateHome && (
+          <button
+            type="button"
+            onClick={onNavigateHome}
+            className="absolute top-6 right-6 z-20 flex items-center gap-2 rounded-full bg-white/20 px-4 py-2 text-sm font-semibold text-white backdrop-blur hover:bg-white/30"
+          >
+            <Home className="w-5 h-5" />
+            Home
+          </button>
+        )}
         <style>{`
           @keyframes pop { 0%{transform:scale(0)} 70%{transform:scale(1.15)} 100%{transform:scale(1)} }
           @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
@@ -170,6 +181,15 @@ export function SmartPaymentScreen({
           >
             Rate Your Trip →
           </button>
+          {onNavigateHome && (
+            <button
+              type="button"
+              onClick={onNavigateHome}
+              className="w-full py-3 text-sm font-semibold text-purple-700 hover:bg-purple-50"
+            >
+              Back to Home
+            </button>
+          )}
         </div>
       </div>
     );
@@ -178,7 +198,17 @@ export function SmartPaymentScreen({
   // ── PROCESSING SCREEN ───────────────────────────────────────────────────────
   if (step === 'processing') {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6">
+      <div className="relative min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6">
+        {onNavigateHome && (
+          <button
+            type="button"
+            onClick={onNavigateHome}
+            className="absolute top-6 right-6 z-10 flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+          >
+            <Home className="w-5 h-5" />
+            Home
+          </button>
+        )}
         <div className="relative w-28 h-28 mb-8">
           <div className="absolute inset-0 rounded-full border-4 border-purple-100" />
           <div className="absolute inset-0 rounded-full border-4 border-purple-600 border-t-transparent animate-spin" />
@@ -201,9 +231,16 @@ export function SmartPaymentScreen({
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <div className="bg-gradient-to-r from-purple-600 to-blue-500 px-6 pt-6 pb-8">
-          <button onClick={() => setStep('card-form')} className="text-white mb-4">
-            <ArrowLeft className="w-6 h-6" />
-          </button>
+          <div className="flex items-center justify-between mb-4">
+            <button type="button" onClick={() => setStep('card-form')} className="text-white hover:bg-white/10 rounded-full p-2">
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            {onNavigateHome && (
+              <button type="button" onClick={onNavigateHome} className="text-white hover:bg-white/10 rounded-full p-2" aria-label="Go to home">
+                <Home className="w-6 h-6" />
+              </button>
+            )}
+          </div>
           <h1 className="text-2xl font-bold text-white">Verify Payment</h1>
           <p className="text-white/80 text-sm mt-1">Enter the 6-digit OTP sent to your phone</p>
         </div>
@@ -263,9 +300,16 @@ export function SmartPaymentScreen({
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <div className="bg-gradient-to-r from-purple-600 to-blue-500 px-6 pt-6 pb-8">
-          <button onClick={() => setStep('summary')} className="text-white mb-4">
-            <ArrowLeft className="w-6 h-6" />
-          </button>
+          <div className="flex items-center justify-between mb-4">
+            <button type="button" onClick={() => setStep('summary')} className="text-white hover:bg-white/10 rounded-full p-2">
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            {onNavigateHome && (
+              <button type="button" onClick={onNavigateHome} className="text-white hover:bg-white/10 rounded-full p-2" aria-label="Go to home">
+                <Home className="w-6 h-6" />
+              </button>
+            )}
+          </div>
           <h1 className="text-2xl font-bold text-white">Card Details</h1>
           <p className="text-white/80 text-sm">Secure & encrypted payment</p>
         </div>
@@ -363,11 +407,21 @@ export function SmartPaymentScreen({
           <button onClick={onBack} className="text-white hover:bg-white/10 rounded-full p-2 transition-colors">
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h1 className="text-white text-2xl font-bold">Payment</h1>
             <p className="text-white/80 text-sm">Complete your transaction</p>
           </div>
-          <div className="flex items-center gap-1 bg-white/20 px-3 py-1.5 rounded-full">
+          {onNavigateHome && (
+            <button
+              type="button"
+              onClick={onNavigateHome}
+              className="text-white hover:bg-white/10 rounded-full p-2 transition-colors shrink-0"
+              aria-label="Go to home"
+            >
+              <Home className="w-6 h-6" />
+            </button>
+          )}
+          <div className="flex items-center gap-1 bg-white/20 px-3 py-1.5 rounded-full shrink-0">
             <Shield className="w-4 h-4 text-white" />
             <span className="text-white text-xs font-semibold">Secure</span>
           </div>

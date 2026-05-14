@@ -27,6 +27,22 @@ L.Icon.Default.mergeOptions({
 });
 
 export const BAHRAIN_CENTER = { lat: 26.0667, lng: 50.5577 };
+
+/** Firestore may store GeoPoint ({ latitude, longitude }) or plain { lat, lng }. */
+export function normalizeMapLatLng(loc: unknown): { lat: number; lng: number } | null {
+  if (!loc || typeof loc !== "object") return null;
+  const o = loc as Record<string, unknown>;
+  if (typeof o.lat === "number" && typeof o.lng === "number") {
+    if (!Number.isFinite(o.lat) || !Number.isFinite(o.lng)) return null;
+    return { lat: o.lat, lng: o.lng };
+  }
+  if (typeof o.latitude === "number" && typeof o.longitude === "number") {
+    if (!Number.isFinite(o.latitude) || !Number.isFinite(o.longitude)) return null;
+    return { lat: o.latitude, lng: o.longitude };
+  }
+  return null;
+}
+
 export const BAHRAIN_BOUNDS = {
   north: 26.35,
   south: 25.95,
@@ -100,18 +116,29 @@ export async function findNearestDrivers(
   const driversRef = collection(db, "drivers");
   const availableQuery = query(driversRef, where("status", "==", "available"));
   const snapshot = await getDocs(availableQuery);
-  const drivers = snapshot.docs.map((item) => item.data() as DriverData);
+  const drivers: DriverData[] = snapshot.docs.map((docSnap) => {
+    const raw = docSnap.data() as Record<string, unknown>;
+    return {
+      ...(raw as unknown as DriverData),
+      driverId: String(raw.driverId ?? docSnap.id),
+    };
+  });
 
   return drivers
-    .map((driver) => ({
-      driver,
-      distanceKm: calculateDistance(
-        pickupLocation.lat,
-        pickupLocation.lng,
-        driver.currentLocation.lat,
-        driver.currentLocation.lng,
-      ),
-    }))
+    .map((driver) => {
+      const pos = normalizeMapLatLng(driver.currentLocation as unknown);
+      if (!pos) return null;
+      return {
+        driver,
+        distanceKm: calculateDistance(
+          pickupLocation.lat,
+          pickupLocation.lng,
+          pos.lat,
+          pos.lng,
+        ),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null)
     .sort((a, b) => a.distanceKm - b.distanceKm)
     .slice(0, limit);
 }
@@ -121,13 +148,16 @@ export async function autoAssignDriver(orderId: string, pickupLocation: { lat: n
   if (nearest.length === 0) return null;
 
   const winner = nearest[0].driver;
+  const winnerId = winner.driverId;
+  if (!winnerId) return null;
+
   await updateDoc(doc(db, "orders", orderId), {
-    assignedDriverId: winner.driverId,
+    assignedDriverId: winnerId,
     assignedDriverName: winner.name,
     assignedDriverPhone: winner.phone,
     status: "accepted",
   });
-  await updateDoc(doc(db, "drivers", winner.driverId), {
+  await updateDoc(doc(db, "drivers", winnerId), {
     status: "busy",
   });
 
@@ -147,11 +177,9 @@ export function loadDriversMarkers(
   drivers
     .filter((driver) => driver.status === "available")
     .forEach((driver) => {
+      const position = normalizeMapLatLng(driver.currentLocation as unknown);
+      if (!position || !driver.driverId) return;
       visibleIds.add(driver.driverId);
-      const position = {
-        lat: driver.currentLocation.lat,
-        lng: driver.currentLocation.lng,
-      };
       const existing = markerStore.get(driver.driverId);
       if (existing) {
         existing.setLatLng(position);
@@ -187,7 +215,15 @@ export function listenDriversLive(
   return onSnapshot(
     availableQuery,
     (snapshot) => {
-      const drivers = snapshot.docs.map((item) => item.data() as DriverData);
+      const drivers: DriverData[] = snapshot.docs.map((docSnap) => {
+        const raw = docSnap.data() as Record<string, unknown>;
+        const loc = normalizeMapLatLng(raw.currentLocation);
+        return {
+          ...(raw as unknown as DriverData),
+          driverId: String(raw.driverId ?? docSnap.id),
+          currentLocation: loc,
+        };
+      });
       onData(drivers);
     },
     (error) => {
@@ -206,32 +242,47 @@ export function drawRoute(
     routingControl?: any;
   },
 ) {
-  if (routeStore.startMarker) map.removeLayer(routeStore.startMarker);
-  if (routeStore.endMarker) map.removeLayer(routeStore.endMarker);
-  if (routeStore.routingControl) {
-    map.removeControl(routeStore.routingControl);
+  try {
+    const a = normalizeMapLatLng(start);
+    const b = normalizeMapLatLng(end);
+    if (!a || !b || !map?.removeLayer) return;
+
+    if (routeStore.startMarker) map.removeLayer(routeStore.startMarker);
+    if (routeStore.endMarker) map.removeLayer(routeStore.endMarker);
+    if (routeStore.routingControl) {
+      map.removeControl(routeStore.routingControl);
+    }
+
+    routeStore.startMarker = L.marker([a.lat, a.lng]).addTo(map);
+    routeStore.endMarker = L.marker([b.lat, b.lng]).addTo(map);
+
+    const Routing = (L as any).Routing;
+    if (!Routing?.Plan || !Routing?.control) {
+      return;
+    }
+
+    const plan = new Routing.Plan(
+      [L.latLng(a.lat, a.lng), L.latLng(b.lat, b.lng)],
+      {
+        createMarker: function () {
+          return null;
+        },
+      },
+    );
+
+    routeStore.routingControl = Routing.control({
+      plan,
+      lineOptions: {
+        styles: [{ color: "#8b5cf6", opacity: 0.8, weight: 5 }],
+      },
+      show: false,
+      addWaypoints: false,
+      routeWhileDragging: false,
+      fitSelectedRoutes: true,
+    }).addTo(map);
+  } catch (e) {
+    console.warn("drawRoute skipped:", e);
   }
-
-  routeStore.startMarker = L.marker(start).addTo(map);
-  routeStore.endMarker = L.marker(end).addTo(map);
-
-  const plan = new (L as any).Routing.Plan([
-    L.latLng(start.lat, start.lng),
-    L.latLng(end.lat, end.lng)
-  ], {
-    createMarker: function() { return null; }
-  });
-
-  routeStore.routingControl = (L as any).Routing.control({
-    plan,
-    lineOptions: {
-      styles: [{ color: '#8b5cf6', opacity: 0.8, weight: 5 }]
-    },
-    show: false,
-    addWaypoints: false,
-    routeWhileDragging: false,
-    fitSelectedRoutes: true
-  }).addTo(map);
 }
 
 export function startDriverLocationUpdates(driverId: string, options?: { intervalMs?: number }) {
@@ -363,8 +414,9 @@ export function listenDriverTracking(
     driverRef,
     (snapshot) => {
       const data = snapshot.data();
-      if (data && data.currentLocation) {
-        onLocationUpdate({ lat: data.currentLocation.lat, lng: data.currentLocation.lng });
+      const pos = data ? normalizeMapLatLng(data.currentLocation) : null;
+      if (pos) {
+        onLocationUpdate(pos);
       }
     },
     (error) => {

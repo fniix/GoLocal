@@ -27,6 +27,10 @@ export interface BookingConfirmPayload {
 
 interface BookingDetailsScreenProps {
   onBack: () => void;
+  onNavigateHome?: () => void;
+  onNavigateSearch?: () => void;
+  onNavigateActivity?: () => void;
+  onNavigateProfile?: () => void;
   serviceType: string;
   selectedService: string;
   userName?: string;
@@ -37,7 +41,7 @@ interface BookingDetailsScreenProps {
   initialDropoff?: string;
 }
 
-export function BookingDetailsScreen({ onBack, serviceType, selectedService, userName, onNavigateLogin, onNavigateRegister, onConfirm, initialPickup, initialDropoff }: BookingDetailsScreenProps) {
+export function BookingDetailsScreen({ onBack, onNavigateHome, onNavigateSearch, onNavigateActivity, onNavigateProfile, serviceType, selectedService, userName, onNavigateLogin, onNavigateRegister, onConfirm, initialPickup, initialDropoff }: BookingDetailsScreenProps) {
   const [rideTime, setRideTime] = useState<'now' | 'schedule'>('now');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [passengerCount, setPassengerCount] = useState(1);
@@ -169,8 +173,33 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
 
     return () => {
       if (unDrivers) unDrivers();
-      driversMarkersRef.current.forEach((marker) => marker.setMap(null));
+      const map = mapInstanceRef.current;
+      driversMarkersRef.current.forEach((marker) => {
+        try {
+          if (marker && typeof marker.remove === "function") {
+            marker.remove();
+          } else if (map && marker) {
+            map.removeLayer(marker);
+          }
+        } catch {
+          /* ignore */
+        }
+      });
       driversMarkersRef.current.clear();
+      try {
+        if (map) {
+          const pickup = pickupMarkerRef.current;
+          const dropoff = dropoffMarkerRef.current;
+          if (pickup && map.hasLayer(pickup)) map.removeLayer(pickup);
+          if (dropoff && map.hasLayer(dropoff)) map.removeLayer(dropoff);
+          map.remove();
+        }
+      } catch {
+        /* ignore */
+      }
+      mapInstanceRef.current = null;
+      pickupMarkerRef.current = null;
+      dropoffMarkerRef.current = null;
     };
   }, []);
 
@@ -178,7 +207,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
     if (!mapInstanceRef.current) return;
     try {
       const location = await getUserLocation();
-      mapInstanceRef.current.panTo(location);
+      mapInstanceRef.current.panTo([location.lat, location.lng]);
       mapInstanceRef.current.setZoom(14);
       setLocationError("");
       if (!pickupCoords) {
@@ -190,7 +219,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
     } catch (error) {
       console.error("User location failed:", error);
       setLocationError("Location access denied. Using Bahrain center.");
-      mapInstanceRef.current.panTo(BAHRAIN_CENTER);
+      mapInstanceRef.current.panTo([BAHRAIN_CENTER.lat, BAHRAIN_CENTER.lng]);
       mapInstanceRef.current.setZoom(11);
     }
   };
@@ -229,10 +258,21 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
             <ArrowLeft className="w-6 h-6" />
           </button>
           
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h1 className="text-white text-2xl font-bold">Booking Details</h1>
             <p className="text-white/90 text-sm capitalize">{selectedService} - {serviceType}</p>
           </div>
+
+          {onNavigateHome && (
+            <button
+              type="button"
+              onClick={onNavigateHome}
+              className="flex items-center text-white hover:bg-white/10 rounded-full p-2 transition-colors shrink-0"
+              aria-label="Go to home"
+            >
+              <Home className="w-6 h-6" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -263,7 +303,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
                 setPickupCoords(coords);
                 hasPickupRef.current = true;
                 selectPickup(pickupMarkerRef.current, mapInstanceRef.current, coords);
-                mapInstanceRef.current?.panTo(coords);
+                mapInstanceRef.current?.panTo([coords.lat, coords.lng]);
               }}
             />
           </div>
@@ -326,7 +366,7 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
                 setDropoffLocation(addr);
                 setDropoffCoords(coords);
                 selectDropoff(dropoffMarkerRef.current, mapInstanceRef.current, coords);
-                mapInstanceRef.current?.panTo(coords);
+                mapInstanceRef.current?.panTo([coords.lat, coords.lng]);
               }}
             />
           </div>
@@ -548,22 +588,38 @@ export function BookingDetailsScreen({ onBack, serviceType, selectedService, use
       {/* Bottom Navigation Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 z-[1001]">
         <div className="max-w-md mx-auto flex justify-around items-center">
-          <button className="flex flex-col items-center text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateHome?.()}
+            className="flex flex-col items-center text-purple-600 transition-colors"
+          >
             <Home className="w-6 h-6 mb-1" />
             <span className="text-xs">Home</span>
           </button>
 
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateSearch?.()}
+            className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
+          >
             <Search className="w-6 h-6 mb-1" />
             <span className="text-xs">Search</span>
           </button>
 
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateActivity?.()}
+            className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
+          >
             <Bell className="w-6 h-6 mb-1" />
             <span className="text-xs">Activity</span>
           </button>
 
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateProfile?.()}
+            className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
+          >
             <UserIcon className="w-6 h-6 mb-1" />
             <span className="text-xs">Profile</span>
           </button>

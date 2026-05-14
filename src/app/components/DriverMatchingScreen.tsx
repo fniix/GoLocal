@@ -1,174 +1,80 @@
-import { ArrowLeft, Phone, MessageCircle, X, Star, Navigation, Share2, Shield, Clock, Home, Search, Bell, User as UserIcon, Car } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { cancelOrder, listenOrderById, setPreferredDriverForOrder, listenToDrivers, type DriverData as FirestoreDriverData, type OrderData } from '../../services/firebaseService';
-import {
-  BAHRAIN_CENTER,
-  animateMarker,
-  calculateDistance,
-  findNearestDrivers,
-  drawRoute,
-  initializeMap,
-  listenDriverTracking,
-  loadDriversMarkers,
-  createMarker,
-} from '../../services/googleMapsService';
-import { updateDoc, doc } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { MapPin, Navigation, ArrowLeft, Search, Shield, Info, Loader2, Sparkles, AlertTriangle, CheckCircle2, Home } from 'lucide-react';
+import { listenToDrivers, listenOrderById, DriverData, OrderData, updateOrder } from '../../services/firebaseService';
 import { AISearchAnimation } from './AISearchAnimation';
 
-// بيانات السائقين الوهميين للاختبار
+const BAHRAIN_CENTER = { lat: 26.0667, lng: 50.5577 };
+
 const DUMMY_DRIVERS: DriverData[] = [
-  {
-    uid: 'dummy-amwaj-1',
-    name: 'James Wilson',
-    vehicleType: 'Tesla Model 3',
-    vehiclePlate: 'AMW 999',
-    phone: '+973 3344 5566',
-    status: 'available',
-    currentLocation: { lat: 26.2800, lng: 50.6600 },
-    seats: 4,
-    pricePerKm: 3.5,
-    area: 'Amwaj Islands',
-    rating: 4.9,
-    totalTrips: 1250,
-  },
-  {
-    uid: 'dummy-riffa-1',
-    name: 'Michael Chen',
-    vehicleType: 'Lexus ES',
-    vehiclePlate: 'RIF 777',
-    phone: '+973 3322 1100',
-    status: 'available',
-    currentLocation: { lat: 26.1167, lng: 50.5500 },
-    seats: 4,
-    pricePerKm: 2.8,
-    area: 'Riffa',
-    rating: 4.7,
-    totalTrips: 840,
-  },
-  {
-    uid: 'dummy-manama-1',
-    name: 'Sarah Parker',
-    vehicleType: 'Toyota Camry',
-    vehiclePlate: 'MAN 555',
-    phone: '+973 3988 7766',
-    status: 'available',
-    currentLocation: { lat: 26.2235, lng: 50.5876 },
-    seats: 4,
-    pricePerKm: 2.2,
-    area: 'Manama',
-    rating: 4.8,
-    totalTrips: 2100,
-  }
+  { driverId: 'dummy-1', name: 'Ahmed Al-Khalifa', phone: '', carType: 'Ride', status: 'available', available: true, online: true, rating: 4.9, area: 'Manama', currentLocation: { lat: 26.2285, lng: 50.5860 } },
+  { driverId: 'dummy-2', name: 'Sara Yousif', phone: '', carType: 'Delivery', status: 'available', available: true, online: true, rating: 4.8, area: 'Muharraq', currentLocation: { lat: 26.2572, lng: 50.6107 } },
+  { driverId: 'dummy-3', name: 'Mohamed Isa', phone: '', carType: 'Ride', status: 'available', available: true, online: true, rating: 4.7, area: 'Riffa', currentLocation: { lat: 26.1301, lng: 50.5500 } },
+  { driverId: 'dummy-4', name: 'Fatima Jassim', phone: '', carType: 'Van', status: 'available', available: true, online: true, rating: 5.0, area: 'Seef', currentLocation: { lat: 26.2429, lng: 50.5436 } },
 ];
 
-interface DriverData {
-  uid: string;
-  name: string;
-  rating: number;
-  totalTrips: number;
-  vehicleType: string;
-  vehiclePlate: string;
-  phone: string;
-  status: 'available' | 'busy' | 'offline';
-  currentLocation: { lat: number; lng: number };
-  seats: number;
-  pricePerKm: number;
-  area: string;
-  distanceKm?: number;
+function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 interface DriverMatchingScreenProps {
   onBack: () => void;
+  onNavigateHome?: () => void;
   pickupLocation: string;
   dropoffLocation: string;
-  onDriverMatched?: (name: string) => void;
-  userCity?: string;
-  orderId?: string | null;
-  matchingMode?: 'ai' | 'manual';
+  onDriverMatched: (driverName: string) => void;
+  userCity: string;
+  orderId: string | null;
+  matchingMode: 'ai' | 'manual';
 }
 
-export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, onDriverMatched, userCity = 'manama', orderId = null, matchingMode = 'ai' }: DriverMatchingScreenProps) {
-  const [driverInfo, setDriverInfo] = useState<DriverData | null>(null);
+export function DriverMatchingScreen({
+  onBack,
+  onNavigateHome,
+  pickupLocation,
+  dropoffLocation,
+  onDriverMatched,
+  userCity,
+  orderId,
+  matchingMode,
+}: DriverMatchingScreenProps) {
   const [drivers, setDrivers] = useState<DriverData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [selectionErrorMessage, setSelectionErrorMessage] = useState('');
-  const [aiSearchMessage, setAiSearchMessage] = useState('');
-  const [aiSearching, setAiSearching] = useState(false);
-  const [aiSearchStepIndex, setAiSearchStepIndex] = useState(0);
-  const [aiAlgorithmStats, setAiAlgorithmStats] = useState<{ visitedNodes: number; distanceKm: number | null; driverName?: string; found: boolean } | null>(null);
+  const [isSearching, setIsSearching] = useState(true);
+  const [matchedDriver, setMatchedDriver] = useState<DriverData | null>(null);
+  const [searchStep, setSearchStep] = useState(0);
   const [liveOrder, setLiveOrder] = useState<OrderData | null>(null);
-  const [mapLoading, setMapLoading] = useState(true);
-  const [flowMode, setFlowMode] = useState<'ai' | 'manual'>(matchingMode);
-  const [areaFilter, setAreaFilter] = useState(userCity);
-  const [maxPriceFilter, setMaxPriceFilter] = useState(5);
-  const [seatsFilter, setSeatsFilter] = useState(1);
-  const [aiRecommendation, setAiRecommendation] = useState<DriverData[]>([]);
-  const [actionLoading, setActionLoading] = useState(false);
-  const mapRef = useRef<any>(null);
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const availableMarkersRef = useRef<Map<string, any>>(new Map());
-  const assignedMarkerRef = useRef<any>(null);
-  const routeRendererRef = useRef<any>(null);
+  const [areaFilter, setAreaFilter] = useState('');
 
-  const formatDriver = (driver: FirestoreDriverData): DriverData => ({
-    uid: driver.driverId,
-    name: driver.name,
-    rating: driver.rating || 4.8,
-    totalTrips: driver.totalTrips || 0,
-    vehicleType: driver.carType || 'Car',
-    vehiclePlate: '',
-    phone: driver.phone || '',
-    status: driver.status,
-    currentLocation: driver.currentLocation || BAHRAIN_CENTER,
-    seats: Number((driver as any).seats ?? 4),
-    pricePerKm: Number((driver as any).pricePerKm ?? 2.5),
-    area: String((driver as any).area ?? userCity),
-    isReal: true,
-  });
+  // AI Specific States
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiAlgorithmStats, setAiAlgorithmStats] = useState<any>(null);
+  const [aiRecommendation, setAiRecommendation] = useState<DriverData[]>([]);
+  const [aiSearchMessage, setAiSearchMessage] = useState('');
+  const [aiSearchStepIndex, setAiSearchStepIndex] = useState(0);
+  const [algorithmStats, setAlgorithmStats] = useState<any>(null);
+
+  const [selectedServiceType, setSelectedServiceType] = useState<string>('Ride');
+
+  const driversRef = useRef<DriverData[]>([]);
+  const liveOrderRef = useRef<OrderData | null>(null);
+  const selectedServiceTypeRef = useRef(selectedServiceType);
+  driversRef.current = drivers;
+  liveOrderRef.current = liveOrder;
+  selectedServiceTypeRef.current = selectedServiceType;
 
   useEffect(() => {
     const unsubscribe = listenToDrivers(
       (items) => {
-        const mappedDrivers = items.map(formatDriver);
-        
-        // Filter dummy drivers based on the selected area if provided
-        const filteredDummies = DUMMY_DRIVERS.filter(d => 
-          !areaFilter || 
-          d.area.toLowerCase().includes(areaFilter.toLowerCase()) || 
-          areaFilter.toLowerCase().includes(d.area.toLowerCase())
-        );
-
-        // Always prioritize real drivers, but merge with area-relevant dummies
-        const availableReal = mappedDrivers.filter(d => d.status === 'available');
-        const allDrivers = [...mappedDrivers, ...filteredDummies];
-        setDrivers(allDrivers);
-
-        const availableDrivers = allDrivers.filter((item) => item.status === 'available');
-        if (availableDrivers.length > 0) {
-          const randomDriver = availableDrivers[Math.floor(Math.random() * availableDrivers.length)];
-          setDriverInfo(randomDriver);
-        } else {
-          setDriverInfo(null);
-        }
-
-        setLoading(false);
+        setDrivers(items);
       },
-      (error) => {
-        console.error('Error loading drivers:', error);
-        // في حالة الخطأ، استخدم السائقين الوهميين فقط
-        setDrivers(DUMMY_DRIVERS);
-        const availableDrivers = DUMMY_DRIVERS.filter((item) => item.status === 'available');
-        if (availableDrivers.length > 0) {
-          const randomDriver = availableDrivers[Math.floor(Math.random() * availableDrivers.length)];
-          setDriverInfo(randomDriver);
-        }
-        setErrorMessage('Could not load drivers right now. Using test drivers.');
-        setLoading(false);
-      }
+      (error) => console.error('DriverMatching: listenToDrivers error:', error)
     );
-
     return unsubscribe;
   }, []);
 
@@ -176,127 +82,13 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
     if (!orderId) return;
     const unsubscribe = listenOrderById(
       orderId,
-      (order) => {
-        setLiveOrder(order);
-      },
-      (error) => {
-        console.error('Failed to subscribe order:', error);
-      }
+      (order) => setLiveOrder(order),
+      (error) => console.error('DriverMatching: listenOrderById error:', error)
     );
     return unsubscribe;
   }, [orderId]);
 
-  useEffect(() => {
-    let unTracking: (() => void) | null = null;
-    const initMap = async () => {
-      if (!mapContainerRef.current) return;
-      try {
-        const map = await initializeMap(mapContainerRef.current, { center: BAHRAIN_CENTER, zoom: 12 });
-        mapRef.current = map;
-        assignedMarkerRef.current = createMarker('#4F46E5', BAHRAIN_CENTER);
-        assignedMarkerRef.current.addTo(map);
-      } catch (error) {
-        console.error('Matching map init failed:', error);
-      } finally {
-        setMapLoading(false);
-      }
-    };
-    void initMap();
-    return () => {
-      if (unTracking) unTracking();
-      availableMarkersRef.current.forEach((marker) => marker.remove());
-      availableMarkersRef.current.clear();
-      if (assignedMarkerRef.current) assignedMarkerRef.current.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const available = drivers
-      .filter((driver) => driver.status === 'available')
-      .map((driver) => ({
-        driverId: driver.uid,
-        name: driver.name,
-        phone: driver.phone,
-        carType: driver.vehicleType,
-        status: driver.status,
-        currentLocation: driver.currentLocation,
-      })) as any;
-    loadDriversMarkers(mapRef.current, available, availableMarkersRef.current);
-  }, [drivers]);
-
-  useEffect(() => {
-    if (!liveOrder?.assignedDriverId || !mapRef.current) return;
-    const unTrack = listenDriverTracking(
-      liveOrder.assignedDriverId,
-      async (location) => {
-        if (assignedMarkerRef.current) {
-          animateMarker(assignedMarkerRef.current, location);
-          mapRef.current.panTo(location);
-        }
-        try {
-          await drawRoute(
-            mapRef.current,
-            location,
-            liveOrder.pickupLocation,
-            routeRendererRef.current,
-          );
-        } catch (error) {
-          console.error('Driver route draw failed:', error);
-        }
-      },
-      (error) => console.error('Driver tracking listen failed:', error),
-    );
-    return () => unTrack();
-  }, [liveOrder?.assignedDriverId, liveOrder?.pickupLocation?.lat, liveOrder?.pickupLocation?.lng]);
-
-  const getVehicleEmoji = (vehicleType: string) => {
-    const type = vehicleType?.toLowerCase() || '';
-    if (type.includes('taxi')) return '🚕';
-    if (type.includes('delivery')) return '🚚';
-    if (type.includes('premium')) return '🚗';
-    return '🚙';
-  };
-
-  const displayDriver = driverInfo;
-  const orderStatus = liveOrder?.status ?? 'pending';
-  const assignedName = liveOrder?.assignedDriverName ?? null;
-  const assignedPhone = liveOrder?.assignedDriverPhone ?? null;
-  const matchedDriver = liveOrder?.assignedDriverId
-    ? drivers.find((driver) => driver.uid === liveOrder.assignedDriverId) ?? displayDriver
-    : displayDriver;
-  const availableDrivers = drivers.filter((driver) => driver.status === 'available');
-  const filteredDrivers = availableDrivers
-    .filter((driver) => {
-      // In AI mode, we strict filter by area
-      if (flowMode === 'ai' && areaFilter) {
-        return driver.area.toLowerCase().includes(areaFilter.toLowerCase()) || 
-               areaFilter.toLowerCase().includes(driver.area.toLowerCase());
-      }
-      // In manual mode, we show all (or respect the filter if the user wants, but here we show all as requested)
-      return true;
-    })
-    .filter((driver) => driver.pricePerKm <= maxPriceFilter)
-    .filter((driver) => driver.seats >= seatsFilter);
-
-  const manualDrivers = filteredDrivers;
-  const hasAssignedDriver = Boolean(liveOrder?.assignedDriverId);
-  const realDrivers = drivers.filter(d => !DUMMY_DRIVERS.some(dummy => dummy.uid === d.uid));
-
-  useEffect(() => {
-    setFlowMode(matchingMode);
-  }, [matchingMode]);
-
-  useEffect(() => {
-    if (flowMode !== 'ai') {
-      setAiRecommendation([]);
-      setAiSearchMessage('');
-      setAiSearching(false);
-      setAiSearchStepIndex(0);
-      setAiAlgorithmStats(null);
-      return;
-    }
-
+  const runRecommendation = useCallback(() => {
     let ignore = false;
     const timeouts: number[] = [];
     const searchSteps = [
@@ -306,524 +98,311 @@ export function DriverMatchingScreen({ onBack, pickupLocation, dropoffLocation, 
       'Finalizing nearest match...'
     ];
 
-    const recommend = async () => {
-      const pickupLoc = liveOrder?.pickupLocation || BAHRAIN_CENTER;
+    const pickupLoc = liveOrderRef.current?.pickupLocation || BAHRAIN_CENTER;
+    setAiSearching(true);
+    setAiAlgorithmStats(null);
+    setAiSearchStepIndex(0);
+    setAiSearchMessage(searchSteps[0]);
 
-      setAiSearching(true);
-      setAiAlgorithmStats(null);
-      setAiSearchStepIndex(0);
-      setAiSearchMessage(searchSteps[0]);
+    searchSteps.slice(1).forEach((message, index) => {
+      timeouts.push(window.setTimeout(() => {
+        if (!ignore) {
+          setAiSearchStepIndex(index + 1);
+          setAiSearchMessage(message);
+        }
+      }, (index + 1) * 800));
+    });
 
-      searchSteps.slice(1).forEach((message, index) => {
-        timeouts.push(window.setTimeout(() => {
-          if (!ignore) {
-            setAiSearchStepIndex(index + 1);
-            setAiSearchMessage(message);
-          }
-        }, (index + 1) * 800));
-      });
+    timeouts.push(window.setTimeout(() => {
+      if (ignore) return;
+      try {
+        const visitedNodes = Math.floor(Math.random() * 8000) + 4500;
+        const driversList = driversRef.current;
+        const serviceType = selectedServiceTypeRef.current ?? 'Ride';
+        const availableDrivers = driversList.filter(d => d.status === 'available');
+        
+        let candidateDrivers = availableDrivers;
+        const isDelivery = serviceType.toLowerCase().includes('delivery') || serviceType.toLowerCase().includes('package');
+        
+        if (isDelivery) {
+          const deliveryDrivers = availableDrivers.filter(d => 
+            d.carType?.toLowerCase() === 'delivery' || 
+            d.carType?.toLowerCase() === 'motorcycle' ||
+            d.carType?.toLowerCase() === 'van'
+          );
+          if (deliveryDrivers.length > 0) candidateDrivers = deliveryDrivers;
+        }
 
-      timeouts.push(window.setTimeout(async () => {
-        if (ignore) return;
-        try {
-          const pickupLoc = liveOrder?.pickupLocation || BAHRAIN_CENTER;
-          
-          // Use a local copy of drivers to avoid dependency issues
-          const availableDrivers = drivers.filter(d => d.status === 'available');
-          
-          const sorted = availableDrivers
+        if (candidateDrivers.length > 0) {
+          const sorted = candidateDrivers
             .map(d => ({
               driver: d,
               distanceKm: calculateDistance(pickupLoc.lat, pickupLoc.lng, d.currentLocation?.lat || 26.2, d.currentLocation?.lng || 50.6)
             }))
             .sort((a, b) => a.distanceKm - b.distanceKm);
 
-          const visitedNodes = Math.floor(Math.random() * 8000) + 4500;
+          const best = sorted[0].driver;
+          const dist = sorted[0].distanceKm;
 
-          if (sorted.length > 0) {
-            const recommendedDriver = sorted[0].driver;
-            const dist = sorted[0].distanceKm;
+          setAiRecommendation([best]);
+          setAiAlgorithmStats({
+            visitedNodes,
+            distanceKm: dist,
+            driverName: best.name,
+            found: true,
+          });
+          setAiSearchMessage(`Nearest driver found: ${best.name} (${dist.toFixed(1)} km)`);
+        } else {
+          // Dummies fallback
+          let finalDummies = DUMMY_DRIVERS;
+          if (isDelivery) {
+            const deliveryDummies = DUMMY_DRIVERS.filter(d => 
+              d.carType?.toLowerCase() === 'delivery' || 
+              d.carType?.toLowerCase() === 'motorcycle' ||
+              d.carType?.toLowerCase() === 'van'
+            );
+            if (deliveryDummies.length > 0) finalDummies = deliveryDummies;
+          }
 
-            setAiRecommendation([recommendedDriver]);
+          const dummyNearest = finalDummies
+            .map((driver) => ({
+              driver,
+              distanceKm: calculateDistance(
+                pickupLoc.lat,
+                pickupLoc.lng,
+                driver.currentLocation?.lat || 26.2,
+                driver.currentLocation?.lng || 50.6,
+              ),
+            }))
+            .sort((a, b) => a.distanceKm - b.distanceKm);
+
+          if (dummyNearest.length > 0) {
+            const best = dummyNearest[0].driver;
+            const dist = dummyNearest[0].distanceKm;
+            
+            setAiRecommendation([best]);
             setAiAlgorithmStats({
               visitedNodes,
               distanceKm: dist,
-              driverName: recommendedDriver.name,
+              driverName: best.name,
               found: true,
             });
-            setAiSearchMessage(`Nearest driver found: ${recommendedDriver.name} (${dist.toFixed(1)} km)`);
+            setAiSearchMessage(`Using test driver: ${best.name} (${dist.toFixed(1)} km)`);
           } else {
-            // Fallback to dummies that match the area
-            const areaDummies = DUMMY_DRIVERS.filter(d => 
-              !areaFilter || 
-              d.area.toLowerCase().includes(areaFilter.toLowerCase()) || 
-              areaFilter.toLowerCase().includes(d.area.toLowerCase())
-            );
-            
-            const dummyNearest = (areaDummies.length > 0 ? areaDummies : DUMMY_DRIVERS)
-              .map((driver) => ({
-                driver,
-                distanceKm: calculateDistance(
-                  pickupLoc.lat,
-                  pickupLoc.lng,
-                  driver.currentLocation?.lat || 26.2,
-                  driver.currentLocation?.lng || 50.6,
-                ),
-              }))
-              .sort((a, b) => a.distanceKm - b.distanceKm);
-
-            if (dummyNearest.length > 0) {
-              const recommendedDriver = { ...dummyNearest[0].driver };
-              const dist = dummyNearest[0].distanceKm;
-              
-              setAiRecommendation([recommendedDriver]);
-              setAiAlgorithmStats({
-                visitedNodes,
-                distanceKm: dist,
-                driverName: recommendedDriver.name,
-                found: true,
-              });
-              setAiSearchMessage(`Using test driver: ${recommendedDriver.name} (${dist.toFixed(1)} km)`);
-            } else {
-              setAiRecommendation([]);
-              setAiAlgorithmStats({ visitedNodes, distanceKm: null, found: false });
-              setAiSearchMessage('No drivers available right now.');
-            }
+            setAiRecommendation([]);
+            setAiAlgorithmStats({ visitedNodes, distanceKm: null, found: false });
+            setAiSearchMessage('No drivers available.');
           }
-        } catch (err) {
-          console.error('AI Search Crash:', err);
-          setAiSearchMessage('Search interrupted. Please try again.');
-          setAiSearching(false);
-        } finally {
-          if (!ignore) setAiSearching(false);
         }
-      }, 3600));
-    };
-
-    void recommend();
+      } catch (err) {
+        console.error('AI Search Error:', err);
+        setAiSearchMessage('Search error occurred.');
+      } finally {
+        if (!ignore) setAiSearching(false);
+      }
+    }, 3200));
 
     return () => {
       ignore = true;
       timeouts.forEach(clearTimeout);
     };
-  }, [flowMode, liveOrder?.pickupLocation?.lat, liveOrder?.pickupLocation?.lng, areaFilter, drivers]);
+  }, []);
 
-  const handleSelectDriver = async (driver: DriverData) => {
-    if (!orderId) {
-      // Demo mode: Proceed even without an active order to show the tracking/payment flow
-      setActionLoading(true);
-      setTimeout(() => {
-        setActionLoading(false);
-        if (onDriverMatched) onDriverMatched(driver.name);
-      }, 800);
-      return;
-    }
-    if (orderStatus !== 'pending') {
-      setSelectionErrorMessage('This order cannot be updated because it is not pending.');
-      return;
-    }
-    setSelectionErrorMessage('');
-    setActionLoading(true);
-    try {
-      await setPreferredDriverForOrder(orderId, {
-        driverId: driver.uid,
-        name: driver.name,
-        phone: driver.phone,
-      });
-      setDriverInfo(driver);
-      alert('Driver selected. Waiting for driver acceptance.');
-      if (onDriverMatched) {
-        onDriverMatched(driver.name);
+  useEffect(() => {
+    if (matchingMode !== 'ai') return;
+    return runRecommendation();
+  }, [matchingMode, runRecommendation]);
+
+  const handleManualMatch = async (driver: DriverData) => {
+    setMatchedDriver(driver);
+    setIsSearching(false);
+    if (orderId) {
+      try {
+        await updateOrder(orderId, {
+          status: 'accepted',
+          assignedDriverId: driver.driverId,
+          assignedDriverName: driver.name,
+        });
+      } catch (error) {
+        console.error('Failed to update order:', error);
       }
-    } catch (error) {
-      console.error('Failed to select driver:', error);
-      alert('Failed to select driver right now. Please try again.');
-    } finally {
-      setActionLoading(false);
     }
+    onDriverMatched(driver.name);
   };
 
-  const handleCancelOrder = async () => {
-    if (!orderId) return;
-    if (orderStatus !== 'pending') {
-      alert('Only pending orders can be cancelled.');
-      return;
-    }
-    try {
-      await cancelOrder(orderId);
-      alert('Order cancelled successfully.');
-      onBack();
-    } catch (error) {
-      console.error('Failed to cancel order:', error);
-      alert('Failed to cancel order.');
-    }
-  };
-
-  const simulateStatusChange = async (newStatus: string, tripStatus?: string) => {
-    if (!orderId) return;
-    try {
-      const orderRef = doc(db, 'orders', orderId);
-      const updates: any = { status: newStatus };
-      if (tripStatus) updates.tripStatus = tripStatus;
-      
-      // If accepting, ensure a driver is assigned if not already
-      if (newStatus === 'accepted' && !liveOrder?.assignedDriverId) {
-        updates.assignedDriverId = 'debug-driver-id';
-        updates.assignedDriverName = 'Debug Driver (Simulated)';
-        updates.assignedDriverPhone = '+973 1234 5678';
-      }
-
-      await updateDoc(orderRef, updates);
-      console.log(`Order ${orderId} simulated to ${newStatus}`);
-    } catch (err) {
-      console.error('Simulation failed:', err);
+  const handleAiConfirm = async () => {
+    if (aiRecommendation.length > 0) {
+      handleManualMatch(aiRecommendation[0]);
     }
   };
 
   return (
-    <div className="size-full bg-gray-50 flex flex-col relative">
-      {/* Main Content Area */}
-
-      {/* Header Section */}
-      <div className="bg-gradient-to-r from-purple-600 to-blue-500 px-6 pt-6 pb-6 shadow-lg">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={onBack}
-            className="flex items-center text-white hover:bg-white/10 rounded-full p-2 transition-colors"
-          >
+    <div className="size-full bg-white flex flex-col font-sans">
+      <div className="bg-gradient-to-r from-purple-700 to-indigo-800 p-6 pt-12 text-white shadow-lg">
+        <div className="flex items-center gap-4 mb-4">
+          <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-all">
             <ArrowLeft className="w-6 h-6" />
           </button>
-          
-          <div className="flex-1">
-            <h1 className="text-white text-2xl font-bold">
-              {hasAssignedDriver ? 'Driver Matched!' : 'Choose Your Driver'}
-            </h1>
-            <p className="text-white/90 text-sm">
-              {hasAssignedDriver ? `Order status: ${orderStatus}` : 'AI recommendation or manual selection'}
-            </p>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-bold">Finding Your Driver</h1>
+            <p className="text-purple-100 text-sm opacity-90">Searching via {matchingMode === 'ai' ? 'AI Algorithm' : 'Manual Selection'}</p>
+          </div>
+          {onNavigateHome && (
+            <button
+              type="button"
+              onClick={onNavigateHome}
+              className="p-2 hover:bg-white/10 rounded-full transition-all shrink-0"
+              aria-label="Go to home"
+            >
+              <Home className="w-6 h-6" />
+            </button>
+          )}
+        </div>
+        
+        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 flex flex-col gap-3 border border-white/20 mt-2">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-green-400/20 flex items-center justify-center">
+              <MapPin className="w-4 h-4 text-green-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] uppercase tracking-wider text-purple-200 font-bold">Pickup</p>
+              <p className="text-sm font-medium truncate">{pickupLocation}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-orange-400/20 flex items-center justify-center">
+              <Navigation className="w-4 h-4 text-orange-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] uppercase tracking-wider text-purple-200 font-bold">Dropoff</p>
+              <p className="text-sm font-medium truncate">{dropoffLocation}</p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 pb-32">
-        <div className="w-full h-60 rounded-2xl overflow-hidden border border-gray-200 mb-6 relative">
-          {mapLoading && <div className="absolute inset-0 z-10 bg-white/80 text-sm text-gray-600 flex items-center justify-center">Loading live map...</div>}
-          <div ref={mapContainerRef} className="w-full h-full" />
-        </div>
-        {loading ? (
-          <div className="flex flex-col items-center justify-center min-h-[420px]">
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Loading drivers...</h2>
-            <p className="text-gray-600 text-center">Please wait while we sync live driver data.</p>
-          </div>
-        ) : errorMessage ? (
-          <div className="flex flex-col items-center justify-center min-h-[420px]">
-            <h2 className="text-2xl font-bold text-red-600 mb-2">Unable to load drivers</h2>
-            <p className="text-gray-600 text-center">{errorMessage}</p>
-          </div>
-        ) : !hasAssignedDriver ? (
-          <div className="space-y-4">
-            <div className="bg-white rounded-2xl shadow-md p-4">
-              <h3 className="font-bold text-gray-800 mb-1">Driver search mode</h3>
-              <p className="text-xs text-gray-500 mb-3">Choose how to search: AI recommendation or manual filtering.</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setFlowMode('ai')}
-                  className={`py-2 rounded-lg font-medium text-sm ${flowMode === 'ai' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-                >
-                  AI Auto
-                </button>
-                <button
-                  onClick={() => setFlowMode('manual')}
-                  className={`py-2 rounded-lg font-medium text-sm ${flowMode === 'manual' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-                >
-                  Manual
-                </button>
-              </div>
-
-            </div>
-
-            {flowMode === 'manual' && (
-              <div className="bg-white rounded-2xl shadow-md p-4">
-                <h4 className="font-semibold text-gray-800 mb-3">Filter available drivers</h4>
-                <div className="grid grid-cols-1 gap-3">
-                  <input
-                    value={areaFilter}
-                    onChange={(event) => setAreaFilter(event.target.value)}
-                    placeholder="Area (e.g. Manama)"
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  />
-                  <label className="text-sm text-gray-700">Max price / km: BD {maxPriceFilter.toFixed(1)}</label>
-                  <input
-                    type="range"
-                    min={1}
-                    max={8}
-                    step={0.5}
-                    value={maxPriceFilter}
-                    onChange={(event) => setMaxPriceFilter(Number(event.target.value))}
-                  />
-                  <label className="text-sm text-gray-700">Minimum seats: {seatsFilter}</label>
-                  <input
-                    type="range"
-                    min={1}
-                    max={7}
-                    step={1}
-                    value={seatsFilter}
-                    onChange={(event) => setSeatsFilter(Number(event.target.value))}
-                  />
+      <div className="flex-1 overflow-hidden relative">
+        {matchingMode === 'ai' ? (
+          <div className="size-full flex flex-col">
+            <div className="flex-1 relative bg-slate-50">
+              <AISearchAnimation 
+                isSearching={aiSearching}
+                algorithmStats={aiAlgorithmStats}
+                searchMessage={aiSearchMessage}
+              />
+              
+              <div className="absolute top-6 left-6 right-6 z-10">
+                <div className="bg-white/90 backdrop-blur shadow-xl rounded-2xl p-4 border border-white flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-inner ${aiSearching ? 'bg-purple-100' : 'bg-green-100'}`}>
+                    {aiSearching ? (
+                      <Loader2 className="w-6 h-6 text-purple-600 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-6 h-6 text-green-600" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800">{aiSearching ? 'AI Analyzing Network' : 'Best Match Found!'}</h3>
+                    <p className="text-xs text-slate-500 font-medium">{aiSearchMessage}</p>
+                  </div>
                 </div>
               </div>
-            )}
 
-            {flowMode === 'ai' && (
-              <div className="mb-6">
-                <AISearchAnimation 
-                  isSearching={aiSearching} 
-                  algorithmStats={aiAlgorithmStats} 
-                  searchMessage={aiSearchMessage} 
-                />
-              </div>
-            )}
-
-            {selectionErrorMessage && (
-              <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-4 text-sm">
-                {selectionErrorMessage}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {(flowMode === 'ai' ? aiRecommendation : manualDrivers).map((driver) => (
-                <div key={driver.uid} className="bg-white rounded-2xl shadow-md p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="font-bold text-gray-800">{driver.name}</p>
-                        {(driver as any).isReal && (
-                          <span className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
-                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                            LIVE
-                          </span>
-                        )}
+              {!aiSearching && aiRecommendation.length > 0 && (
+                <div className="absolute bottom-6 left-6 right-6 z-20 animate-in slide-in-from-bottom duration-500">
+                  <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-purple-100">
+                    <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-4 text-white flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span className="text-xs font-bold uppercase tracking-widest">Recommendation Result</span>
                       </div>
-                      <p className="text-xs text-gray-500">{driver.vehicleType} • {driver.area}</p>
-                      <p className="text-xs text-gray-500">Seats: {driver.seats || 4} • BD {(driver.pricePerKm || 0).toFixed(1)}/km</p>
-                      {typeof driver.distanceKm === 'number' && (
-                        <p className="text-xs text-purple-600 mt-1">Approx. {driver.distanceKm.toFixed(2)} km from pickup</p>
-                      )}
+                      <div className="px-2 py-1 bg-white/20 rounded-md text-[10px] font-bold">
+                        98% MATCH
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-700 font-semibold">{(driver.rating || 5).toFixed(1)} ⭐</p>
-                      <a href={`tel:${driver.phone}`} className="text-xs text-blue-600 underline">
-                        {driver.phone || 'No phone'}
-                      </a>
+                    <div className="p-5">
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl border-2 border-slate-50 shadow-sm">
+                          👨‍✈️
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="text-lg font-black text-slate-800 leading-tight">{aiRecommendation[0].name}</h4>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-xs font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md border border-slate-200">
+                              {aiRecommendation[0].carType}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs font-bold text-orange-500">★</span>
+                              <span className="text-xs font-bold text-slate-700">{aiRecommendation[0].rating}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-black text-purple-600 leading-none">{aiAlgorithmStats?.distanceKm?.toFixed(1) || '0.8'}</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">km away</p>
+                        </div>
+                      </div>
+                      
+                      <button 
+                        onClick={handleAiConfirm}
+                        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-base hover:bg-black transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
+                      >
+                        Confirm AI Match
+                      </button>
                     </div>
                   </div>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      disabled={actionLoading || !driver.phone}
-                      onClick={() => void handleSelectDriver(driver)}
-                      className="flex-1 py-2 bg-gradient-to-r from-purple-600 to-blue-500 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
-                    >
-                      Select this driver
-                    </button>
-                    <a
-                      href={`tel:${driver.phone}`}
-                      className="px-3 py-2 border border-green-500 text-green-600 rounded-lg text-sm font-semibold"
-                    >
-                      Call
-                    </a>
-                  </div>
-                </div>
-              ))}
-
-              {realDrivers.length === 0 && (
-                <div className="bg-white rounded-2xl shadow-md p-6 text-center text-gray-600">
-                  No real drivers found in database. Showing test drivers.
                 </div>
               )}
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            {/* Success Badge */}
-            <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-green-800">Driver Found!</h3>
-                <p className="text-sm text-green-600">
-                  {orderStatus === 'accepted' ? 'Order accepted in real-time' : 'Arriving in 3 minutes'}
-                </p>
-              </div>
-            </div>
-
-            {/* Driver Info Card */}
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <div className="flex items-center gap-4 mb-6">
-                {/* Driver Photo */}
-                <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-blue-100 rounded-full flex items-center justify-center text-4xl shadow-md">
-                  {getVehicleEmoji(matchedDriver?.vehicleType || 'Car')}
-                </div>
-
-                {/* Driver Details */}
-                <div className="flex-1">
-                  <h2 className="text-xl font-bold text-gray-800">{assignedName || matchedDriver?.name || 'Assigned driver'}</h2>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                    <span className="font-semibold text-gray-700">{(matchedDriver?.rating ?? 4.8).toFixed(1)}</span>
-                    <span className="text-sm text-gray-500">({matchedDriver?.totalTrips ?? 0} trips)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-sm text-green-600 font-medium">{orderStatus}</span>
-                  </div>
-                  {assignedPhone && <p className="text-xs text-gray-500 mt-1">{assignedPhone}</p>}
-                </div>
-
-                {/* Quick Actions */}
-                <div className="flex flex-col gap-2">
-                  <a href={`tel:${assignedPhone || matchedDriver?.phone || ''}`} className="w-12 h-12 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-md transition-colors">
-                    <Phone className="w-5 h-5 text-white" />
-                  </a>
-                  <button className="w-12 h-12 bg-blue-500 hover:bg-blue-600 rounded-full flex items-center justify-center shadow-md transition-colors">
-                    <MessageCircle className="w-5 h-5 text-white" />
-                  </button>
+          <div className="size-full flex flex-col bg-slate-50">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-black text-slate-800">Available Drivers</h3>
+                <div className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-[10px] font-bold uppercase">
+                  {drivers.length} online
                 </div>
               </div>
-
-              {/* Vehicle Info */}
-              <div className="bg-gray-50 rounded-xl p-4 mb-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <Car className="w-5 h-5 text-purple-600" />
-                  <span className="font-semibold text-gray-800">Vehicle Details</span>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <p className="text-xs text-gray-500 mb-1">Vehicle Type</p>
-                    <p className="font-medium text-gray-800">{matchedDriver?.vehicleType || 'Car'}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-xs text-gray-500 mb-1">Plate Number</p>
-                    <p className="text-2xl font-bold text-purple-600 tracking-wider">{matchedDriver?.vehiclePlate || '--'}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Arrival Estimate */}
-              <div className="flex items-center justify-between bg-purple-50 rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-600">Estimated Arrival</p>
-                    <p className="text-xl font-bold text-purple-600">3 min</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => onDriverMatched?.(matchedDriver?.name || 'Assigned Driver')}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors text-sm"
-                >
-                  Track Live
-                </button>
-              </div>
-            </div>
-
-            {/* Trip Summary */}
-            <div className="bg-white rounded-2xl shadow-md p-5">
-              <h3 className="font-bold text-gray-800 mb-4">Trip Summary</h3>
-              <div className="space-y-3">
-                <div className="flex gap-3">
-                  <div className="flex flex-col items-center">
-                    <div className="w-3 h-3 bg-purple-600 rounded-full"></div>
-                    <div className="w-0.5 h-8 bg-gray-300"></div>
-                    <div className="w-3 h-3 bg-red-600 rounded-full"></div>
-                  </div>
-                  <div className="flex-1 space-y-3">
-                    <div>
-                      <p className="text-xs text-gray-500">Pickup</p>
-                      <p className="font-medium text-gray-800">{pickupLocation || 'Current Location'}</p>
+              
+              <div className="space-y-4">
+                {drivers.map(driver => (
+                  <div key={driver.driverId} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center gap-4 hover:border-purple-200 transition-all group">
+                    <div className="w-14 h-14 rounded-xl bg-slate-50 flex items-center justify-center text-2xl group-hover:bg-purple-50 transition-colors">
+                      🚗
                     </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Drop-off</p>
-                      <p className="font-medium text-gray-800">{dropoffLocation || 'Destination'}</p>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-slate-800 truncate">{driver.name}</h4>
+                      <p className="text-xs text-slate-400 font-medium">{driver.carType} • {driver.rating} ★</p>
                     </div>
+                    <button 
+                      onClick={() => handleManualMatch(driver)}
+                      className="px-5 py-2.5 bg-slate-100 hover:bg-purple-600 hover:text-white text-slate-700 rounded-xl font-bold text-sm transition-all"
+                    >
+                      Book
+                    </button>
                   </div>
-                </div>
+                ))}
+                {drivers.length === 0 && (
+                  <div className="text-center py-12">
+                    <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Search className="w-8 h-8 text-slate-300" />
+                    </div>
+                    <p className="text-slate-500 font-medium">Looking for nearby drivers...</p>
+                  </div>
+                )}
               </div>
-            </div>
-
-            {/* Safety Features */}
-            <div className="bg-white rounded-2xl shadow-md p-5">
-              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Shield className="w-5 h-5 text-purple-600" />
-                Safety & Sharing
-              </h3>
-              <div className="space-y-3">
-                <button className="w-full flex items-center gap-3 p-3 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors">
-                  <Share2 className="w-5 h-5 text-blue-600" />
-                  <div className="text-left flex-1">
-                    <p className="font-medium text-gray-800">Share Trip Details</p>
-                    <p className="text-xs text-gray-600">Send trip info to family or friends</p>
-                  </div>
-                </button>
-
-                <button className="w-full flex items-center gap-3 p-3 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors">
-                  <Shield className="w-5 h-5 text-purple-600" />
-                  <div className="text-left flex-1">
-                    <p className="font-medium text-gray-800">Safety Center</p>
-                    <p className="text-xs text-gray-600">Emergency contacts & support</p>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="space-y-3 pt-2">
-              <button 
-                onClick={() => onDriverMatched?.()}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-500 text-white py-4 rounded-full text-lg font-semibold shadow-lg hover:shadow-xl transition-all"
-              >
-                View on Map
-              </button>
-
-              <button
-                onClick={handleCancelOrder}
-                className="w-full flex items-center justify-center gap-2 bg-white border-2 border-red-500 text-red-600 py-4 rounded-full text-lg font-semibold hover:bg-red-50 transition-all"
-              >
-                <X className="w-5 h-5" />
-                Cancel Order
-              </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 z-[1001]">
-        <div className="max-w-md mx-auto flex justify-around items-center">
-          <button className="flex flex-col items-center text-purple-600 transition-colors">
-            <Home className="w-6 h-6 mb-1" />
-            <span className="text-xs">Home</span>
-          </button>
-
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
-            <Search className="w-6 h-6 mb-1" />
-            <span className="text-xs">Search</span>
-          </button>
-
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
-            <Bell className="w-6 h-6 mb-1" />
-            <span className="text-xs">Activity</span>
-          </button>
-
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
-            <UserIcon className="w-6 h-6 mb-1" />
-            <span className="text-xs">Profile</span>
-          </button>
+      <div className="p-6 bg-slate-50 border-t border-slate-100">
+        <div className="flex items-start gap-3 text-slate-400">
+          <Shield className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <p className="text-[10px] leading-relaxed">
+            Safety first: all GoLocal drivers are verified and trips are tracked via GPS.
+            Share your trip details with family for added security.
+          </p>
         </div>
       </div>
     </div>

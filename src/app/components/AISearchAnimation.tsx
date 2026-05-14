@@ -152,7 +152,10 @@ export function AISearchAnimation({ isSearching, algorithmStats, searchMessage }
               return distA - distB;
             });
 
-            let current = openSet.shift();
+            const current = openSet.shift();
+            if (!current || !Array.isArray(current.neighbors)) {
+              break;
+            }
             closedSet.push(current);
 
             if (current === end) {

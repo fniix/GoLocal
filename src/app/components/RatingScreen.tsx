@@ -3,6 +3,10 @@ import { useState } from 'react';
 
 interface RatingScreenProps {
   onBack: () => void;
+  onNavigateHome?: () => void;
+  onNavigateSearch?: () => void;
+  onNavigateActivity?: () => void;
+  onNavigateProfile?: () => void;
   driverName: string;
   driverPhoto: string;
   driverRating: number;
@@ -12,7 +16,7 @@ interface RatingScreenProps {
   onSubmit?: () => void;
 }
 
-export function RatingScreen({ onBack, driverName, driverPhoto, driverRating, pickupLocation, dropoffLocation, fareAmount, onSubmit }: RatingScreenProps) {
+export function RatingScreen({ onBack, onNavigateHome, onNavigateSearch, onNavigateActivity, onNavigateProfile, driverName, driverPhoto, driverRating, pickupLocation, dropoffLocation, fareAmount, onSubmit }: RatingScreenProps) {
   const [overallRating, setOverallRating] = useState(0);
   const [hoveredStar, setHoveredStar] = useState(0);
   const [categoryRatings, setCategoryRatings] = useState({
@@ -130,10 +134,21 @@ export function RatingScreen({ onBack, driverName, driverPhoto, driverRating, pi
             <ArrowLeft className="w-6 h-6" />
           </button>
           
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h1 className="text-white text-2xl font-bold">Rate Your Ride</h1>
             <p className="text-white/90 text-sm">Help us improve your experience</p>
           </div>
+
+          {onNavigateHome && (
+            <button
+              type="button"
+              onClick={onNavigateHome}
+              className="flex items-center text-white hover:bg-white/10 rounded-full p-2 transition-colors shrink-0"
+              aria-label="Go to home"
+            >
+              <Home className="w-6 h-6" />
+            </button>
+          )}
         </div>
 
         {/* Driver Card */}
@@ -364,22 +379,38 @@ export function RatingScreen({ onBack, driverName, driverPhoto, driverRating, pi
       {/* Bottom Navigation Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4">
         <div className="max-w-md mx-auto flex justify-around items-center">
-          <button className="flex flex-col items-center text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateHome?.()}
+            className="flex flex-col items-center text-purple-600 transition-colors"
+          >
             <Home className="w-6 h-6 mb-1" />
             <span className="text-xs">Home</span>
           </button>
 
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateSearch?.()}
+            className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
+          >
             <Search className="w-6 h-6 mb-1" />
             <span className="text-xs">Search</span>
           </button>
 
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateActivity?.()}
+            className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
+          >
             <Bell className="w-6 h-6 mb-1" />
             <span className="text-xs">Activity</span>
           </button>
 
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateProfile?.()}
+            className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
+          >
             <UserIcon className="w-6 h-6 mb-1" />
             <span className="text-xs">Profile</span>
           </button>

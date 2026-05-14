@@ -118,6 +118,17 @@ const mapUser = (id: string, data: any): UserData => ({
   createdAt: data?.createdAt,
 });
 
+function mapFirestoreLatLng(loc: any): { lat: number; lng: number } | null {
+  if (!loc || typeof loc !== "object") return null;
+  if (typeof loc.lat === "number" && typeof loc.lng === "number") {
+    return { lat: loc.lat, lng: loc.lng };
+  }
+  if (typeof loc.latitude === "number" && typeof loc.longitude === "number") {
+    return { lat: loc.latitude, lng: loc.longitude };
+  }
+  return null;
+}
+
 const mapDriver = (id: string, data: any): DriverData => ({
   driverId: data?.driverId ?? id,
   name: data?.name ?? "",
@@ -127,10 +138,7 @@ const mapDriver = (id: string, data: any): DriverData => ({
   available: data?.available ?? false,
   online: data?.online ?? false,
   area: data?.area ?? "",
-  currentLocation: data?.currentLocation ? {
-    lat: data.currentLocation.lat,
-    lng: data.currentLocation.lng,
-  } : null,
+  currentLocation: mapFirestoreLatLng(data?.currentLocation),
   rating: data?.rating ?? 0,
   totalTrips: data?.totalTrips ?? 0,
   totalRides: data?.totalRides ?? data?.totalTrips ?? 0,
@@ -144,14 +152,8 @@ const mapOrder = (id: string, data: any): OrderData => ({
   userId: data?.userId ?? "",
   userName: data?.userName ?? "",
   userPhone: data?.userPhone ?? "",
-  pickupLocation: {
-    lat: data?.pickupLocation?.lat ?? 0,
-    lng: data?.pickupLocation?.lng ?? 0,
-  },
-  dropoffLocation: {
-    lat: data?.dropoffLocation?.lat ?? 0,
-    lng: data?.dropoffLocation?.lng ?? 0,
-  },
+  pickupLocation: mapFirestoreLatLng(data?.pickupLocation) ?? { lat: 0, lng: 0 },
+  dropoffLocation: mapFirestoreLatLng(data?.dropoffLocation) ?? { lat: 0, lng: 0 },
   pickupAddress: data?.pickupAddress ?? "",
   dropoffAddress: data?.dropoffAddress ?? "",
   assignedDriverId: data?.assignedDriverId ?? null,

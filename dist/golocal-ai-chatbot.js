@@ -10,9 +10,13 @@
   'use strict';
 
   // ============ CONFIG ============
+  console.log('[GoLocal Chat] Initializing widget...');
   // Set from index.html: window.__GLOCAL_OPENAI_KEY__ (Vite injects VITE_OPENAI_API_KEY at dev/build)
   var _k = typeof window !== 'undefined' ? window.__GLOCAL_OPENAI_KEY__ : '';
-  if (!_k || _k === '%VITE_OPENAI_API_KEY%') _k = '';
+  if (!_k || _k === '%VITE_OPENAI_API_KEY%') {
+    console.warn('[GoLocal Chat] OpenAI API Key is using placeholder or is missing.');
+    _k = '';
+  }
   var OPENAI_API_KEY = _k || 'YOUR_API_KEY';
   var OPENAI_MODEL = 'gpt-4o-mini';
   var OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
@@ -20,6 +24,7 @@
   // ============ CONTEXT HELPERS ============
   function getContext() {
     var c = window.GoLocalChatContext || {};
+    console.log('[GoLocal Chat] Context requested:', c);
     return {
       isLoggedIn: !!c.isLoggedIn,
       hasActiveBooking: !!c.hasActiveBooking,
@@ -416,6 +421,7 @@
   }
 
   btn.addEventListener('click', function () {
+    console.log('[GoLocal Chat] Toggle button clicked. Panel open state BEFORE:', panel.classList.contains('open'));
     panel.classList.toggle('open');
     if (panel.classList.contains('open')) {
       inputEl.focus();

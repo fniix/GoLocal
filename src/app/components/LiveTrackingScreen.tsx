@@ -13,6 +13,10 @@ import {
 
 interface LiveTrackingScreenProps {
   onBack: () => void;
+  onNavigateHome?: () => void;
+  onNavigateSearch?: () => void;
+  onNavigateActivity?: () => void;
+  onNavigateProfile?: () => void;
   driverName: string;
   pickupLocation: string;
   dropoffLocation: string;
@@ -20,7 +24,7 @@ interface LiveTrackingScreenProps {
   onTripComplete?: () => void;
 }
 
-export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoffLocation, orderId, onTripComplete }: LiveTrackingScreenProps) {
+export function LiveTrackingScreen({ onBack, onNavigateHome, onNavigateSearch, onNavigateActivity, onNavigateProfile, driverName, pickupLocation, dropoffLocation, orderId, onTripComplete }: LiveTrackingScreenProps) {
   const [rideStatus, setRideStatus] = useState<'arriving' | 'picked-up' | 'en-route'>('arriving');
   const [estimatedTime, setEstimatedTime] = useState(3);
   const [isBottomSheetExpanded, setIsBottomSheetExpanded] = useState(false);
@@ -91,7 +95,7 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
           if (!order || !mapRef.current) return;
           pickupMarkerRef.current?.setLatLng(order.pickupLocation);
           dropoffMarkerRef.current?.setLatLng(order.dropoffLocation);
-          mapRef.current.panTo(order.pickupLocation);
+          mapRef.current.panTo([order.pickupLocation.lat, order.pickupLocation.lng]);
           setDistanceRemaining(
             Math.max(
               0.5,
@@ -204,6 +208,16 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
             </button>
 
             <div className="flex gap-2">
+              {onNavigateHome && (
+                <button
+                  type="button"
+                  onClick={onNavigateHome}
+                  className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors"
+                  aria-label="Go to home"
+                >
+                  <Home className="w-5 h-5 text-gray-800" />
+                </button>
+              )}
               {/* Share Trip */}
               <button className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 transition-colors">
                 <Share2 className="w-5 h-5 text-gray-800" />
@@ -459,22 +473,38 @@ export function LiveTrackingScreen({ onBack, driverName, pickupLocation, dropoff
       {/* Bottom Navigation Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 z-[1001]">
         <div className="max-w-md mx-auto flex justify-around items-center">
-          <button className="flex flex-col items-center text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateHome?.()}
+            className="flex flex-col items-center text-purple-600 transition-colors"
+          >
             <Home className="w-6 h-6 mb-1" />
             <span className="text-xs">Home</span>
           </button>
 
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateSearch?.()}
+            className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
+          >
             <Search className="w-6 h-6 mb-1" />
             <span className="text-xs">Search</span>
           </button>
 
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateActivity?.()}
+            className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
+          >
             <Bell className="w-6 h-6 mb-1" />
             <span className="text-xs">Activity</span>
           </button>
 
-          <button className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors">
+          <button
+            type="button"
+            onClick={() => onNavigateProfile?.()}
+            className="flex flex-col items-center text-gray-400 hover:text-purple-600 transition-colors"
+          >
             <UserIcon className="w-6 h-6 mb-1" />
             <span className="text-xs">Profile</span>
           </button>
